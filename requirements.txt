@@ -1,0 +1,6 @@
+yt-dlp
+google-generativeai
+anthropic
+openai
+ffmpeg-python
+jinja2

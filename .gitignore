@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Obsidian
+.obsidian/
+
+# Claude Code local settings (may contain API keys)
+.claude/
+
+# Downloaded videos
+downloads/
+
+# Generated output
+output/
+
+# Environment / secrets
+.env
+.env.*
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
