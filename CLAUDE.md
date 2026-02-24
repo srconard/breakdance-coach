@@ -1,6 +1,6 @@
 # CLAUDE.md - Project Context for Claude Code
 
-**Last Updated:** February 24, 2026
+**Last Updated:** February 24, 2026 (evening session)
 
 ## What Is This Project?
 
@@ -12,7 +12,7 @@
 
 ## Current Status: 🟢 Working
 
-Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.com (cloud GPU). Re-clip tool enables upgrading clip quality post-generation. 3D analyzer pipeline built (GVHMR + Blender headless), pending checkpoint setup.
+Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.com (cloud GPU). Re-clip tool enables upgrading clip quality post-generation. 3D analyzer pipeline works end-to-end: GVHMR pose estimation on Modal (T4 GPU) producing full SMPL body mesh, Blender 4.4 GLB export with animated armature + skinned mesh. Coordinate transform (SMPL Y-up to Blender Z-up) recently added, pending visual verification.
 
 ### What's Working
 - ✅ YouTube downloads (via yt-dlp with android_vr/tv client workaround)
@@ -28,9 +28,17 @@ Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.
 - ✅ Project reorganized into monorepo (tutorial_generator/, analyzer_3d/, shared/)
 - ✅ 3D analyzer pipeline code (GVHMR Modal + Blender GLB export + CLI)
 - ✅ GitHub repo: https://github.com/srconard/breakdance-coach
+- ✅ GVHMR pose estimation fully working on Modal (bypasses Hydra config with OmegaConf + hydra.utils.instantiate)
+- ✅ Full SMPL body mesh extraction (6890 vertices, 13776 faces, 24-joint skinning weights) via smplx on Modal
+- ✅ Real SMPL rest pose joint positions extracted for proper bone placement
+- ✅ Blender 4.4 (x64) GLB export with animated armature + skinned mesh
+- ✅ Coordinate transform: SMPL Y-up to Blender Z-up `(x, y, z) -> (x, -z, y)`
+- ✅ Full 3D pipeline: Video -> GVHMR (Modal T4) -> SMPL params + mesh -> Blender GLB -> Obsidian markdown
 
 ### In Progress
-- 🟡 GVHMR checkpoint setup (download SMPL models, upload to Modal volume)
+- 🟡 Coordinate transform visual verification (SMPL Y-up to Blender Z-up just implemented)
+- 🟡 Bone orientation tuning for correct rotation application in GLB
+- 🟡 Obsidian 3D viewer integration (have "3D Embed" plugin; may need "model-viewer" or custom HTML embed for animation playback)
 - 🟡 DeepMotion API access (requested, waiting for approval)
 
 ### Open Tasks
@@ -136,16 +144,27 @@ Video Input (YouTube URL or local file)
 ```
 Video Input (local file or YouTube URL)
     ↓
-[GVHMR on Modal T4 GPU]
+[GVHMR on Modal T4 GPU] (app: gvhmr-pose-estimation)
     ├── YOLO: Person detection + tracking
     ├── ViTPose: 2D keypoint estimation
     ├── HMR2: Feature extraction
-    └── GVHMR: Gravity-aware 3D pose → SMPL parameters (.pkl)
+    ├── GVHMR: Gravity-aware 3D pose → SMPL parameters
+    └── smplx: Extract body mesh (6890 verts, 13776 faces, 24-joint weights, rest pose joints)
+    ↓ Returns: SMPL params + mesh data (.pkl)
     ↓
-[Blender headless] SMPL params → animated skeleton → .GLB export
+[Blender 4.4 headless] (local, x64)
+    ├── Build armature from SMPL rest pose joints
+    ├── Coordinate transform: SMPL Y-up → Blender Z-up: (x,y,z) → (x,-z,y)
+    ├── Create skinned mesh with vertex groups + weights
+    └── Animate via per-frame bone rotations → .GLB export
     ↓
 [Jinja2] Generate Obsidian Markdown with ![[move.glb#autoplay]]
 ```
+
+#### GVHMR Config Bypass (Critical)
+The standard `register_store_gvhmr()` imports training-only dependencies that fail in inference.
+The permanent fix uses `OmegaConf.create()` + `hydra.utils.instantiate()` to build the config manually.
+See `analyzer_3d/src/gvhmr_modal.py` for implementation.
 
 ## Key Files
 

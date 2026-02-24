@@ -313,6 +313,46 @@ class GVHMREstimator:
             "num_frames": total_frames,
         }
 
+        # Extract SMPL body mesh for GLB export (6890 vertices, proper skinning)
+        try:
+            import smplx
+
+            smpl_model = smplx.create(
+                "inputs/checkpoints/body_models",
+                model_type="smpl",
+                gender="neutral",
+                batch_size=1,
+            )
+
+            # Get average betas across all frames for consistent body shape
+            betas_avg = torch.tensor(
+                result["smpl_params_global"]["betas"].mean(axis=0),
+                dtype=torch.float32,
+            ).unsqueeze(0)
+
+            # Forward pass with zero pose to get shaped rest mesh
+            smpl_output = smpl_model(
+                betas=betas_avg,
+                body_pose=torch.zeros(1, 69),   # rest pose
+                global_orient=torch.zeros(1, 3),
+            )
+
+            # Get rest pose joint positions (critical for correct bone placement)
+            joints = smpl_output.joints[0, :24].detach().cpu().numpy()  # (24, 3)
+
+            result["mesh"] = {
+                "vertices": smpl_output.vertices[0].detach().cpu().numpy(),  # (6890, 3)
+                "faces": smpl_model.faces.astype(np.int32),                 # (13776, 3)
+                "weights": smpl_model.lbs_weights.detach().cpu().numpy(),   # (6890, 24)
+                "joints": joints,                                           # (24, 3)
+            }
+            print(f"SMPL mesh: {result['mesh']['vertices'].shape[0]} vertices, "
+                  f"{result['mesh']['faces'].shape[0]} faces, "
+                  f"{joints.shape[0]} joints")
+        except Exception as e:
+            print(f"Warning: Could not extract SMPL mesh: {e}")
+            print("GLB will use stick figure fallback")
+
         # Cleanup
         os.unlink(video_path)
 
