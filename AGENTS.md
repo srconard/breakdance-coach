@@ -1,86 +1,60 @@
-# CLAUDE.md - Project Context for Claude Code
+# AGENTS.md - Project Context for AI Agents
 
 ## What Is This Project?
 
-**Breakdance Tutorial GIF Generator** - A Python CLI tool that converts YouTube breakdancing tutorial videos into step-by-step GIFs with AI-generated descriptions, outputting Obsidian-compatible Markdown files.
+**Breakdance Coach** — A suite of AI-powered tools for learning breakdancing:
 
-The goal is to help learn breakdancing by creating visual reference material from video tutorials.
-
-## Project Architecture
-
-```
-YouTube URL
-    ↓
-[yt-dlp] Download video with audio
-    ↓
-[ffmpeg] Preprocess (downscale, reduce fps, trim)
-    ↓
-[Gemini API] Analyze video → identify steps with timestamps
-    ↓
-[Configurable LLM] Generate descriptions (Google/Anthropic/OpenAI)
-    ↓
-[ffmpeg] Create optimized GIFs for each step
-    ↓
-[Jinja2] Generate Obsidian Markdown with embedded GIFs
-```
+1. **Tutorial Wiki Generator** — Converts YouTube videos into step-by-step visual tutorials (Obsidian markdown with embedded GIF/MP4)
+2. **3D Move Analyzer** (planned) — Generates interactive 3D models from breakdancing videos (GVHMR → SMPL → GLB → Obsidian)
+3. **Shared Tools** — Frame interpolation, video download, cloud GPU utilities
 
 ## Documentation Locations
 
-All detailed documentation is in the `AGENTS/` folder:
-
 | File | What It Contains |
 |------|------------------|
+| `AGENTS/PROJECT-ROADMAP.md` | **Master roadmap** — status, 3D feature spec, reorg plan, all future work |
+| `AGENTS/frame-interpolation-options.md` | Research: RIFE, fal.ai, Replicate, Topaz comparison |
 | `AGENTS/CONTEXT.md` | Technical architecture, code patterns, API usage |
-| `AGENTS/PROJECT-ROADMAP.md` | Current status, blockers, next steps, future plans |
-| `AGENTS/session-log-2026-01-22.md` | Build history and decisions made |
-| `README.md` | User-facing documentation and usage instructions |
+| `AGENTS/session-log-2026-02-23.md` | Latest: YouTube fix, GitHub push, interpolation |
+| `AGENTS/session-log-2026-01-23.md` | Pipeline testing & fixes |
+| `AGENTS/session-log-2026-01-22.md` | Initial build session |
+| `README.md` | User-facing documentation |
 
-## Key Files
+## Key Files (Tutorial Generator)
 
 | File | Purpose |
 |------|---------|
-| `src/main.py` | CLI entry point - orchestrates the entire pipeline |
-| `src/video_analyzer.py` | Gemini integration - contains `TutorialStep` dataclass |
-| `src/description.py` | Multi-provider LLM support (Google, Anthropic, OpenAI) |
-| `config.py` | Settings and API keys - **user added Google API key on line 44** |
+| `src/main.py` | CLI entry point - orchestrates the pipeline |
+| `src/video_analyzer.py` | Gemini integration (`gemini-2.5-flash`) |
+| `src/description.py` | Multi-provider LLM descriptions (`gemini-2.5-flash`) |
+| `src/downloader.py` | YouTube downloads (android_vr/tv client workaround) |
+| `src/interpolate.py` | Frame interpolation (FFmpeg, upgrades planned) |
+| `config.py` | Settings and API key management via env vars |
 
 ## Current Status
 
-🟡 **Core code complete, blocked on YouTube downloads**
+🟢 **Tutorial generator working.** 3D analyzer planned.
 
-YouTube now requires:
-- Deno JavaScript runtime (`winget install DenoLand.Deno`)
-- PO Tokens for some videos
-- Browser cookies for authenticated content
-
-**To test the pipeline:** Either fix downloads or add `--local-file` flag support.
-
-## Important Context
-
-1. **API Key Location**: User added their Google API key directly in `config.py` line 44 (not via environment variable)
-
-2. **Deprecated Package**: `google.generativeai` is deprecated - should migrate to `google.genai`
-
-3. **Output Format**: Obsidian Markdown with wiki-style embeds: `![[gifs/step_01.gif]]`
-
-4. **Cost Optimization**: Video preprocessing (480p, 15fps) reduces Gemini API costs significantly
+- GitHub: https://github.com/srconard/breakdance-coach
+- Gemini model: `gemini-2.5-flash`
+- API key: `GOOGLE_API_KEY` environment variable
 
 ## Common Commands
 
 ```bash
-# Run the tool
-python -m src.main "https://youtube.com/watch?v=..."
+# Generate tutorial
+python -m src.main --local-file "video.mp4" --title "Tutorial" --format mp4
 
-# With options
-python -m src.main "URL" --trim-intro 10 --description-model anthropic
+# Generate tutorial from YouTube
+python -m src.main "https://youtube.com/watch?v=VIDEO_ID" --format mp4
 
-# Test individual modules
-python -m src.video_prep <video.mp4>
-python -m src.gif_creator <video.mp4> <start_sec> <end_sec>
+# Slow-mo a clip
+python -m src.interpolate "output/tutorial/gifs/step_05.mp4" --slowdown 3
 ```
 
 ## When Resuming Work
 
-1. Check `AGENTS/PROJECT-ROADMAP.md` for current blockers and next steps
-2. The YouTube download issue is the priority - see roadmap for solutions
-3. All code is written but untested end-to-end due to download blocker
+1. Check `AGENTS/PROJECT-ROADMAP.md` for full roadmap and status
+2. Open tasks: Refine Gemini prompt, upgrade interpolation, 3D analyzer
+3. Frame interpolation research: `AGENTS/frame-interpolation-options.md`
+4. 3D feature spec: in PROJECT-ROADMAP.md under "Feature Spec: 3D Move Analyzer"
