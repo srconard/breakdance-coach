@@ -25,6 +25,10 @@ env/
 # Downloaded videos
 downloads/
 
+# Model checkpoints (large binary files)
+local_checkpoints/
+inbox/
+
 # Generated output
 output/
 

@@ -4,10 +4,10 @@ Deploys Practical-RIFE v4.25 to a Modal T4 GPU for high-quality
 frame interpolation of breakdance tutorial clips.
 
 Usage (deploy first time):
-    python -m modal deploy src/rife_modal.py
+    python -m modal deploy shared/rife_modal.py
 
 Usage (called from interpolate.py, or directly):
-    python -c "from src.rife_modal import interpolate_video_rife; \
+    python -c "from shared.rife_modal import interpolate_video_rife; \
         interpolate_video_rife('clip.mp4', multi=3)"
 """
 

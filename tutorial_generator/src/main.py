@@ -5,13 +5,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-from config import Settings
-from src.downloader import download_video
-from src.video_prep import preprocess_video
-from src.video_analyzer import analyze_video, print_steps
-from src.description import get_description_provider
-from src.gif_creator import create_clips_for_steps
-from src.output import generate_markdown
+from tutorial_generator.config import Settings
+from shared.downloader import download_video
+from tutorial_generator.src.video_prep import preprocess_video
+from tutorial_generator.src.video_analyzer import analyze_video, print_steps
+from tutorial_generator.src.description import get_description_provider
+from tutorial_generator.src.gif_creator import create_clips_for_steps
+from tutorial_generator.src.output import generate_markdown
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,10 +21,10 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m src.main --local-file "video.mp4" --title "My Tutorial"
-  python -m src.main --local-file "video.mp4" --title "Tutorial" --format mp4
-  python -m src.main --local-file "video.mp4" --title "Tutorial" --trim-intro 10
-  python -m src.main "https://youtube.com/watch?v=..." --description-model anthropic
+  python -m tutorial_generator.src.main --local-file "video.mp4" --title "My Tutorial"
+  python -m tutorial_generator.src.main --local-file "video.mp4" --title "Tutorial" --format mp4
+  python -m tutorial_generator.src.main --local-file "video.mp4" --title "Tutorial" --trim-intro 10
+  python -m tutorial_generator.src.main "https://youtube.com/watch?v=..." --description-model anthropic
         """,
     )
 
@@ -173,7 +173,7 @@ def main() -> int:
         if args.output:
             output_dir = Path("output") / args.output
         else:
-            from src.output import sanitize_title
+            from tutorial_generator.src.output import sanitize_title
             output_dir = Path("output") / sanitize_title(video_title)
 
         # Step 2: Preprocess video (cost reduction)
@@ -210,7 +210,7 @@ def main() -> int:
         clip_steps = steps
         if args.trim_intro > 0:
             # Create adjusted steps with offset timestamps
-            from src.video_analyzer import TutorialStep
+            from tutorial_generator.src.video_analyzer import TutorialStep
             clip_steps = []
             for step in steps:
                 adjusted_step = TutorialStep(

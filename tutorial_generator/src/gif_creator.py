@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Literal
 
-from src.video_analyzer import TutorialStep
+from tutorial_generator.src.video_analyzer import TutorialStep
 
 OutputFormat = Literal["gif", "mp4", "webm"]
 
@@ -316,7 +316,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 4:
-        print("Usage: python -m src.gif_creator <video_path> <start_seconds> <end_seconds>")
+        print("Usage: python -m tutorial_generator.src.gif_creator <video_path> <start_seconds> <end_seconds>")
         sys.exit(1)
 
     video = Path(sys.argv[1])

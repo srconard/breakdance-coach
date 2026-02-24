@@ -138,7 +138,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python -m src.video_prep <video_path> [trim_intro] [trim_outro]")
+        print("Usage: python -m tutorial_generator.src.video_prep <video_path> [trim_intro] [trim_outro]")
         sys.exit(1)
 
     input_video = Path(sys.argv[1])

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import google.generativeai as genai
 
-from config import get_api_key
+from tutorial_generator.config import get_api_key
 
 
 @dataclass
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python -m src.video_analyzer <video_path>")
+        print("Usage: python -m tutorial_generator.src.video_analyzer <video_path>")
         sys.exit(1)
 
     video = Path(sys.argv[1])

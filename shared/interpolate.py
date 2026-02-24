@@ -5,9 +5,9 @@ Supports multiple backends:
   - rife:    RIFE v4.25 on Modal cloud GPU (high quality, requires Modal setup)
 
 Usage:
-    python -m src.interpolate "clip.mp4" --slowdown 3
-    python -m src.interpolate "clip.mp4" --slowdown 3 --backend rife
-    python -m src.interpolate "clip.mp4" --slowdown 4 --fps 60 -o "slowmo.mp4"
+    python -m shared.interpolate "clip.mp4" --slowdown 3
+    python -m shared.interpolate "clip.mp4" --slowdown 3 --backend rife
+    python -m shared.interpolate "clip.mp4" --slowdown 4 --fps 60 -o "slowmo.mp4"
 """
 
 import argparse
@@ -73,7 +73,7 @@ def interpolate_rife(
     For slowdown factors > 2, uses iterative 2x passes for better quality
     on fast motion (less ghosting than a single large multiplier).
     """
-    from src.rife_modal import interpolate_video_rife
+    from shared.rife_modal import interpolate_video_rife
 
     multi = int(slowdown)
     if multi != slowdown:
@@ -206,16 +206,16 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m src.interpolate "clip.mp4" --slowdown 2
-  python -m src.interpolate "clip.mp4" --slowdown 3 --backend rife
-  python -m src.interpolate "step_05.mp4" --slowdown 4 --fps 60
-  python -m src.interpolate "clip.mp4" --slowdown 3 -o "slowmo_clip.mp4"
+  python -m shared.interpolate "clip.mp4" --slowdown 2
+  python -m shared.interpolate "clip.mp4" --slowdown 3 --backend rife
+  python -m shared.interpolate "step_05.mp4" --slowdown 4 --fps 60
+  python -m shared.interpolate "clip.mp4" --slowdown 3 -o "slowmo_clip.mp4"
 
 Backends:
   ffmpeg  - FFmpeg minterpolate (basic quality, no setup needed)
   rife    - RIFE v4.25 on Modal cloud GPU (high quality)
             Requires: pip install modal && modal setup
-            First run: python -m modal deploy src/rife_modal.py
+            First run: python -m modal deploy shared/rife_modal.py
 
 Slowdown guide:
   2x  - Good for most moves, easy to follow

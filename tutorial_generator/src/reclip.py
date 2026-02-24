@@ -5,16 +5,16 @@ the original (or any) video at full quality — native fps and resolution.
 
 Usage:
     # Re-clip a specific step at full quality
-    python -m src.reclip "output/FLARE_Workout_Exercises" --step 11
+    python -m tutorial_generator.src.reclip "output/FLARE_Workout_Exercises" --step 11
 
     # Re-clip all steps at full quality
-    python -m src.reclip "output/FLARE_Workout_Exercises" --all
+    python -m tutorial_generator.src.reclip "output/FLARE_Workout_Exercises" --all
 
     # Re-clip from a different source video (e.g. higher quality download)
-    python -m src.reclip "output/FLARE_Workout_Exercises" --step 11 --video "hd_video.mp4"
+    python -m tutorial_generator.src.reclip "output/FLARE_Workout_Exercises" --step 11 --video "hd_video.mp4"
 
     # Custom output settings
-    python -m src.reclip "output/FLARE_Workout_Exercises" --step 11 --fps 30 --width 1280
+    python -m tutorial_generator.src.reclip "output/FLARE_Workout_Exercises" --step 11 --fps 30 --width 1280
 """
 
 import argparse
@@ -145,7 +145,7 @@ def download_hq_video(
         Path to the downloaded video
     """
     import re
-    from src.downloader import download_video
+    from shared.downloader import download_video
 
     # Use quality-tagged filename to avoid overwriting existing downloads
     if title_hint:
@@ -271,7 +271,7 @@ def reclip_from_metadata(
     clip_paths = []
     for step in steps:
         # Build filename
-        from src.gif_creator import sanitize_filename
+        from tutorial_generator.src.gif_creator import sanitize_filename
         filename = (
             f"step_{step['step_number']:02d}"
             f"_{sanitize_filename(step['label'])}"

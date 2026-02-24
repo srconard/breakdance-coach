@@ -133,7 +133,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python -m src.downloader <youtube_url>")
+        print("Usage: python -m shared.downloader <youtube_url>")
         sys.exit(1)
 
     video_path, title = download_video(sys.argv[1], output_dir="downloads")

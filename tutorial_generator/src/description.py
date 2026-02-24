@@ -8,8 +8,8 @@ import anthropic
 import google.generativeai as genai
 import openai
 
-from config import get_api_key
-from src.video_analyzer import TutorialStep
+from tutorial_generator.config import get_api_key
+from tutorial_generator.src.video_analyzer import TutorialStep
 
 
 class DescriptionProvider(ABC):
@@ -178,7 +178,7 @@ def get_description_provider(
 
 if __name__ == "__main__":
     # Test the providers
-    from src.video_analyzer import TutorialStep
+    from tutorial_generator.src.video_analyzer import TutorialStep
 
     test_step = TutorialStep(
         step_number=1,

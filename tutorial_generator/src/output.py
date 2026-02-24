@@ -8,7 +8,7 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 
-from src.video_analyzer import TutorialStep
+from tutorial_generator.src.video_analyzer import TutorialStep
 
 
 @dataclass
@@ -200,7 +200,7 @@ def sanitize_title(title: str) -> str:
 
 if __name__ == "__main__":
     # Test the output generator
-    from src.video_analyzer import TutorialStep
+    from tutorial_generator.src.video_analyzer import TutorialStep
 
     test_steps = [
         TutorialStep(1, "00:15", "00:45", "Basic Stance"),

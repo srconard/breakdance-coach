@@ -6,13 +6,13 @@
 
 **Breakdance Coach** — A suite of AI-powered tools for learning breakdancing:
 
-1. **Tutorial Wiki Generator** (`src/`) — Converts YouTube videos into step-by-step GIF/video tutorials with AI descriptions, outputting Obsidian-compatible Markdown
-2. **3D Move Analyzer** (planned) — Generates interactive 3D models from breakdancing videos using pose estimation (GVHMR/PromptHMR → SMPL → GLB)
-3. **Shared Tools** — Frame interpolation (RIFE + FFmpeg), video download, cloud GPU utilities
+1. **Tutorial Wiki Generator** (`tutorial_generator/`) — Converts YouTube videos into step-by-step GIF/video tutorials with AI descriptions, outputting Obsidian-compatible Markdown
+2. **3D Move Analyzer** (`analyzer_3d/`) — Generates interactive 3D models from breakdancing videos using pose estimation (GVHMR → SMPL → GLB)
+3. **Shared Tools** (`shared/`) — Frame interpolation (RIFE + FFmpeg), video download, cloud GPU utilities
 
 ## Current Status: 🟢 Working
 
-Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.com (cloud GPU). Re-clip tool enables upgrading clip quality post-generation.
+Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.com (cloud GPU). Re-clip tool enables upgrading clip quality post-generation. 3D analyzer pipeline built (GVHMR + Blender headless), pending checkpoint setup.
 
 ### What's Working
 - ✅ YouTube downloads (via yt-dlp with android_vr/tv client workaround)
@@ -25,14 +25,17 @@ Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.
 - ✅ Tutorial metadata JSON export (timestamps, settings, source URL)
 - ✅ Re-clip tool — re-extract clips at higher quality without re-running AI
 - ✅ Frame interpolation — RIFE v4.25 on Modal.com (cloud T4 GPU) + FFmpeg fallback
+- ✅ Project reorganized into monorepo (tutorial_generator/, analyzer_3d/, shared/)
+- ✅ 3D analyzer pipeline code (GVHMR Modal + Blender GLB export + CLI)
 - ✅ GitHub repo: https://github.com/srconard/breakdance-coach
 
-### Planned
-- 📋 3D Move Analyzer (video → interactive 3D model in Obsidian)
-- 📋 Project reorganization into `tutorial-generator/`, `3d-analyzer/`, `shared/`
+### In Progress
+- 🟡 GVHMR checkpoint setup (download SMPL models, upload to Modal volume)
+- 🟡 DeepMotion API access (requested, waiting for approval)
 
 ### Open Tasks
-- 🟡 Refine Gemini prompt to skip talking-head segments (`src/video_analyzer.py` lines 82-102)
+- 🟡 Refine Gemini prompt to skip talking-head segments (`tutorial_generator/src/video_analyzer.py` lines 82-102)
+- 📋 Custom Three.js 3D viewer (Phase 3)
 
 ---
 
@@ -42,23 +45,75 @@ Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.
 # Set API key
 set GOOGLE_API_KEY=your_google_api_key_here
 
+# === Tutorial Generator ===
+
 # Run with MP4 output (recommended - small files, playback controls)
-python -m src.main --local-file "video.mp4" --title "Tutorial Name" --format mp4
+python -m tutorial_generator.src.main --local-file "video.mp4" --title "Tutorial Name" --format mp4
 
 # Download from YouTube directly
-python -m src.main "https://youtube.com/watch?v=VIDEO_ID" --format mp4
+python -m tutorial_generator.src.main "https://youtube.com/watch?v=VIDEO_ID" --format mp4
 
 # Re-clip a step at 1080p from YouTube
-python -m src.reclip "output/My_Tutorial" --step 11 --download-hq 1080p
+python -m tutorial_generator.src.reclip "output/My_Tutorial" --step 11 --download-hq 1080p
 
 # Slow-mo a clip with RIFE (cloud GPU)
-python -m src.interpolate "output/tutorial/gifs/step_05.mp4" --slowdown 3 --backend rife
+python -m shared.interpolate "output/tutorial/gifs/step_05.mp4" --slowdown 3 --backend rife
 
 # Slow-mo with FFmpeg (local, no GPU needed)
-python -m src.interpolate "output/tutorial/gifs/step_05.mp4" --slowdown 3 --backend ffmpeg
+python -m shared.interpolate "output/tutorial/gifs/step_05.mp4" --slowdown 3 --backend ffmpeg
+
+# === 3D Move Analyzer ===
+
+# Setup (one-time): download checkpoints + upload to Modal
+python -m analyzer_3d.src.gvhmr_setup
+
+# Deploy GVHMR to Modal
+python -m modal deploy analyzer_3d/src/gvhmr_modal.py
+
+# Analyze a video → 3D GLB model
+python -m analyzer_3d.src.main "video.mp4" --backend gvhmr
+
+# Analyze specific tutorial steps
+python -m analyzer_3d.src.main "video.mp4" --backend gvhmr \
+    --metadata "output/My_Tutorial/tutorial_metadata.json" --step 3 --step 5
 ```
 
 ## Project Architecture
+
+### Monorepo Structure
+```
+breakdance-coach/
+├── tutorial_generator/      # Tool 1: Tutorial Wiki Generator
+│   ├── src/
+│   │   ├── main.py          # CLI entry point
+│   │   ├── video_analyzer.py
+│   │   ├── description.py
+│   │   ├── gif_creator.py
+│   │   ├── output.py
+│   │   ├── reclip.py
+│   │   └── video_prep.py
+│   ├── templates/
+│   │   └── tutorial.md
+│   └── config.py
+├── analyzer_3d/             # Tool 2: 3D Move Analyzer
+│   ├── src/
+│   │   ├── main.py          # CLI entry point
+│   │   ├── gvhmr_modal.py   # GVHMR on Modal.com (T4 GPU)
+│   │   ├── gvhmr_setup.py   # Checkpoint download & upload
+│   │   ├── exporter.py      # SMPL → GLB via Blender headless
+│   │   ├── output.py        # Obsidian markdown generation
+│   │   └── blender_scripts/
+│   │       └── smpl_to_glb.py
+│   └── templates/
+│       └── 3d_tutorial.md
+├── shared/                  # Shared utilities
+│   ├── downloader.py        # YouTube download (yt-dlp)
+│   ├── interpolate.py       # Frame interpolation (RIFE + FFmpeg)
+│   └── rife_modal.py        # RIFE v4.25 on Modal.com
+├── CLAUDE.md
+├── README.md
+└── requirements.txt
+```
 
 ### Tutorial Generator Pipeline
 ```
@@ -77,46 +132,40 @@ Video Input (YouTube URL or local file)
 [Jinja2] Generate Obsidian Markdown + tutorial_metadata.json
 ```
 
-### Re-clip / Quality Upgrade Pipeline
+### 3D Analyzer Pipeline
 ```
-tutorial_metadata.json (timestamps from previous run)
+Video Input (local file or YouTube URL)
     ↓
-[yt-dlp] Optionally download higher quality video (720p/1080p/best)
+[GVHMR on Modal T4 GPU]
+    ├── YOLO: Person detection + tracking
+    ├── ViTPose: 2D keypoint estimation
+    ├── HMR2: Feature extraction
+    └── GVHMR: Gravity-aware 3D pose → SMPL parameters (.pkl)
     ↓
-[ffmpeg] Re-extract clips at native fps & resolution
+[Blender headless] SMPL params → animated skeleton → .GLB export
     ↓
-[RIFE on Modal] Optionally slow-mo with neural frame interpolation
-```
-
-### 3D Analyzer Pipeline (Planned)
-```
-Video Input
-    ↓
-[YOLO + ViTPose] Person detection + 2D keypoints
-    ↓
-[GVHMR / PromptHMR] 3D mesh recovery → SMPL parameters
-    ↓
-[smplx] SMPL params → 3D mesh vertices (6,890 per frame)
-    ↓
-[Blender headless] Rig mesh, apply animation → .GLB export
-    ↓
-[Obsidian model-viewer] Interactive 3D viewer: ![[move.glb#autoplay]]
+[Jinja2] Generate Obsidian Markdown with ![[move.glb#autoplay]]
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/main.py` | Tutorial generator CLI entry point |
-| `src/video_analyzer.py` | Gemini video analysis (uses `gemini-2.5-flash`) |
-| `src/downloader.py` | YouTube download with quality presets (yt-dlp) |
-| `src/description.py` | Multi-provider LLM with rate limiting (uses `gemini-2.5-flash`) |
-| `src/gif_creator.py` | GIF/MP4/WebM creation |
-| `src/output.py` | Obsidian markdown + tutorial_metadata.json generation |
-| `src/reclip.py` | Re-clip tool — extract HQ clips from metadata |
-| `src/interpolate.py` | Frame interpolation (RIFE cloud + FFmpeg local) |
-| `src/rife_modal.py` | RIFE v4.25 deployed on Modal.com (T4 GPU) |
-| `config.py` | API key via `GOOGLE_API_KEY` env var |
+| `tutorial_generator/src/main.py` | Tutorial generator CLI entry point |
+| `tutorial_generator/src/video_analyzer.py` | Gemini video analysis (uses `gemini-2.5-flash`) |
+| `tutorial_generator/src/description.py` | Multi-provider LLM with rate limiting |
+| `tutorial_generator/src/gif_creator.py` | GIF/MP4/WebM creation |
+| `tutorial_generator/src/output.py` | Obsidian markdown + tutorial_metadata.json |
+| `tutorial_generator/src/reclip.py` | Re-clip tool — extract HQ clips from metadata |
+| `tutorial_generator/config.py` | API key via `GOOGLE_API_KEY` env var |
+| `analyzer_3d/src/main.py` | 3D analyzer CLI entry point |
+| `analyzer_3d/src/gvhmr_modal.py` | GVHMR deployed on Modal.com (T4 GPU) |
+| `analyzer_3d/src/gvhmr_setup.py` | Checkpoint download & Modal volume upload |
+| `analyzer_3d/src/exporter.py` | SMPL → GLB via Blender headless |
+| `analyzer_3d/src/output.py` | 3D model Obsidian markdown generation |
+| `shared/downloader.py` | YouTube download with quality presets (yt-dlp) |
+| `shared/interpolate.py` | Frame interpolation (RIFE cloud + FFmpeg local) |
+| `shared/rife_modal.py` | RIFE v4.25 deployed on Modal.com (T4 GPU) |
 
 ## Documentation
 
@@ -133,11 +182,15 @@ Video Input
 
 ### API Keys
 ```bash
-# Windows — required
+# Windows — required for tutorial generator
 set GOOGLE_API_KEY=your_google_api_key_here
 
-# For RIFE interpolation on Modal.com
+# For Modal.com (RIFE + GVHMR)
 python -m modal setup   # One-time auth via browser
+
+# For DeepMotion (when API access granted)
+set DEEPMOTION_CLIENT_ID=your_client_id
+set DEEPMOTION_CLIENT_SECRET=your_client_secret
 
 # Linux/Mac
 export GOOGLE_API_KEY=your_google_api_key_here
@@ -150,3 +203,4 @@ export GOOGLE_API_KEY=your_google_api_key_here
 - Source: Original video (not preprocessed) for clips
 - Gemini model: `gemini-2.5-flash`
 - Interpolation backend: `ffmpeg` (use `--backend rife` for higher quality)
+- 3D backend: `gvhmr` (gravity-aware, best for breakdancing)

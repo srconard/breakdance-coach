@@ -4,3 +4,5 @@ anthropic
 openai
 ffmpeg-python
 jinja2
+requests
+gdown
