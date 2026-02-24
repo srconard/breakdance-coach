@@ -1,7 +1,7 @@
 # {{ title }}
-
 {% if source_url %}
-Source: [YouTube Video]({{ source_url }})
+
+> **Source:** [{{ source_url }}]({{ source_url }})
 {% endif %}
 
 ---

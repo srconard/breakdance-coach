@@ -42,6 +42,7 @@ def download_video(
     url: str,
     output_dir: str = ".",
     filename: Optional[str] = None,
+    quality: str = "best_mp4",
 ) -> tuple[Path, str]:
     """Download a YouTube video with audio.
 
@@ -49,6 +50,11 @@ def download_video(
         url: YouTube video URL
         output_dir: Directory to save the video
         filename: Optional custom filename (without extension)
+        quality: Quality preset:
+            - "best_mp4": Best quality with audio in mp4 (default, fast)
+            - "720p": 720p video + best audio, merged
+            - "1080p": 1080p video + best audio, merged
+            - "best": Absolute best quality video + audio, merged
 
     Returns:
         Tuple of (path to downloaded video, video title)
@@ -65,15 +71,25 @@ def download_video(
     if filename is None:
         filename = re.sub(r'[<>:"/\\|?*]', '_', video_title)
 
+    # Quality presets
+    format_map = {
+        "best_mp4": "best[ext=mp4]/best",
+        "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
+        "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+        "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+    }
+    format_str = format_map.get(quality, quality)  # Allow raw format strings too
+
     output_template = str(output_path / f"{filename}.%(ext)s")
 
     ydl_opts = {
-        # Use any available format with video+audio
-        'format': 'best[ext=mp4]/best',
+        'format': format_str,
         'outtmpl': output_template,
         'quiet': False,
         'no_warnings': False,
         'progress_hooks': [_progress_hook],
+        # Merge format for separate video+audio streams
+        'merge_output_format': 'mp4',
         # Retry options
         'retries': 30,
         'fragment_retries': 30,

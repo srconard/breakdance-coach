@@ -42,6 +42,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--source-url",
+        type=str,
+        metavar="URL",
+        help="YouTube URL to store in metadata (useful with --local-file)",
+    )
+
+    parser.add_argument(
         "--title",
         type=str,
         help="Video title (required when using --local-file)",
@@ -152,7 +159,7 @@ def main() -> int:
             if not video_path.exists():
                 raise FileNotFoundError(f"Local file not found: {video_path}")
             video_title = args.title
-            source_url = None
+            source_url = args.source_url  # Can be set via --source-url
             print(f"Video: {video_path}")
         else:
             print("\n[1/6] Downloading video...")
@@ -160,7 +167,7 @@ def main() -> int:
                 args.url,
                 output_dir=str(temp_dir),
             )
-            source_url = args.url
+            source_url = args.source_url or args.url
 
         # Determine output directory
         if args.output:
@@ -234,7 +241,13 @@ def main() -> int:
             descriptions=descriptions,
             gif_paths=clip_paths,
             output_dir=output_dir,
-            source_url=source_url if not args.local_file else None,
+            source_url=source_url,
+            original_video=video_path,
+            clip_settings={
+                "fps": args.fps,
+                "width": args.width,
+                "format": args.format,
+            },
         )
 
         print("\n" + "=" * 60)

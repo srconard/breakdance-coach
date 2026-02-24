@@ -1,5 +1,6 @@
-"""Output generator for creating Obsidian-compatible Markdown files."""
+"""Output generator for creating Obsidian-compatible Markdown files and metadata."""
 
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,60 @@ class StepWithDescription:
     gif_filename: str
 
 
+def save_metadata(
+    title: str,
+    steps: list[TutorialStep],
+    descriptions: list[str],
+    clip_filenames: list[str],
+    output_dir: Path,
+    source_url: Optional[str] = None,
+    original_video: Optional[str] = None,
+    clip_settings: Optional[dict] = None,
+) -> Path:
+    """Save tutorial metadata as JSON for later re-clipping and reference.
+
+    Args:
+        title: Title of the tutorial
+        steps: List of tutorial steps with timestamps
+        descriptions: List of descriptions for each step
+        clip_filenames: List of clip filenames (relative to gifs/)
+        output_dir: Directory for output files
+        source_url: YouTube URL (if downloaded)
+        original_video: Path to the original full-quality video
+        clip_settings: Settings used to create clips (fps, width, format)
+
+    Returns:
+        Path to the saved JSON file
+    """
+    output_dir = Path(output_dir)
+
+    metadata = {
+        "title": title,
+        "source_url": source_url,
+        "original_video": str(original_video) if original_video else None,
+        "clip_settings": clip_settings or {},
+        "steps": [],
+    }
+
+    for step, desc, clip_file in zip(steps, descriptions, clip_filenames):
+        metadata["steps"].append({
+            "step_number": step.step_number,
+            "start_time": step.start_time,
+            "end_time": step.end_time,
+            "start_seconds": step.start_seconds,
+            "end_seconds": step.end_seconds,
+            "label": step.label,
+            "description": desc,
+            "clip_filename": clip_file,
+        })
+
+    metadata_path = output_dir / "tutorial_metadata.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    print(f"Saved metadata: {metadata_path}")
+    return metadata_path
+
+
 def generate_markdown(
     title: str,
     steps: list[TutorialStep],
@@ -30,9 +85,14 @@ def generate_markdown(
     gif_paths: list[Path],
     output_dir: Path,
     source_url: Optional[str] = None,
+    original_video: Optional[Path] = None,
+    clip_settings: Optional[dict] = None,
     template_dir: Optional[Path] = None,
 ) -> Path:
     """Generate an Obsidian-compatible Markdown file with embedded GIFs.
+
+    Also saves a tutorial_metadata.json alongside the markdown for
+    re-clipping at different quality levels later.
 
     Args:
         title: Title of the tutorial
@@ -41,6 +101,8 @@ def generate_markdown(
         gif_paths: List of paths to GIF files
         output_dir: Directory for output files
         source_url: Optional YouTube URL for reference
+        original_video: Path to the original full-quality video
+        clip_settings: Settings used to create clips (fps, width, format)
         template_dir: Directory containing Jinja2 templates
 
     Returns:
@@ -55,11 +117,15 @@ def generate_markdown(
 
     # Prepare step data with descriptions
     steps_with_desc = []
+    clip_filenames = []
     for step, desc, gif_path in zip(steps, descriptions, gif_paths):
         # Copy GIF to output directory
         new_gif_path = gifs_dir / gif_path.name
         if gif_path != new_gif_path:
             shutil.copy2(gif_path, new_gif_path)
+
+        relative_filename = f"gifs/{gif_path.name}"
+        clip_filenames.append(relative_filename)
 
         step_data = StepWithDescription(
             step_number=step.step_number,
@@ -68,7 +134,7 @@ def generate_markdown(
             label=step.label,
             description=desc,
             gif_path=new_gif_path,
-            gif_filename=f"gifs/{gif_path.name}",  # Relative path for Obsidian
+            gif_filename=relative_filename,
         )
         steps_with_desc.append(step_data)
 
@@ -89,6 +155,18 @@ def generate_markdown(
     # Write output file
     output_file = output_dir / f"{sanitize_title(title)}.md"
     output_file.write_text(content, encoding="utf-8")
+
+    # Save metadata JSON for re-clipping
+    save_metadata(
+        title=title,
+        steps=steps,
+        descriptions=descriptions,
+        clip_filenames=clip_filenames,
+        output_dir=output_dir,
+        source_url=source_url,
+        original_video=original_video,
+        clip_settings=clip_settings,
+    )
 
     print(f"\nGenerated Markdown: {output_file}")
     print(f"GIFs copied to: {gifs_dir}")

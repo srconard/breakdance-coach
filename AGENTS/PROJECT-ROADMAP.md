@@ -1,6 +1,6 @@
 # Breakdance Coach - Project Roadmap
 
-**Last Updated:** February 23, 2026
+**Last Updated:** February 24, 2026
 
 ---
 
@@ -23,9 +23,10 @@ breakdance-coach/
 │   │   ├── main.py              # CLI entry point
 │   │   ├── video_analyzer.py    # Gemini video analysis
 │   │   ├── description.py       # Multi-provider LLM descriptions
-│   │   ├── downloader.py        # YouTube download
+│   │   ├── downloader.py        # YouTube download (multi-quality)
 │   │   ├── gif_creator.py       # GIF/MP4/WebM creation
-│   │   ├── output.py            # Obsidian markdown generation
+│   │   ├── output.py            # Obsidian markdown + metadata JSON
+│   │   ├── reclip.py            # Re-clip tool (HQ extraction)
 │   │   └── video_prep.py        # Video preprocessing
 │   ├── templates/
 │   │   └── tutorial.md
@@ -41,7 +42,8 @@ breakdance-coach/
 │   └── config.py
 │
 ├── shared/                      # Shared utilities
-│   ├── interpolate.py           # Frame interpolation (multi-backend)
+│   ├── interpolate.py           # Frame interpolation (RIFE + FFmpeg)
+│   ├── rife_modal.py            # RIFE v4.25 on Modal.com (cloud GPU)
 │   ├── downloader.py            # YouTube download
 │   └── gpu_cloud.py             # Modal/Replicate/fal.ai wrappers
 │
@@ -63,12 +65,16 @@ breakdance-coach/
 | Component | Status |
 |-----------|--------|
 | YouTube downloads | ✅ Working (android_vr/tv workaround) |
-| Video preprocessing | ✅ 71% size reduction |
+| Multi-quality downloads | ✅ 720p, 1080p, best presets |
+| Video preprocessing | ✅ 71% size reduction (for cheap Gemini analysis) |
 | Gemini video analysis | ✅ `gemini-2.5-flash` |
 | Description generation | ✅ `gemini-2.5-flash`, rate limited |
 | GIF/MP4/WebM output | ✅ From original video |
-| Obsidian markdown | ✅ Working |
-| Frame interpolation | ✅ FFmpeg minterpolate (basic quality) |
+| Obsidian markdown | ✅ With YouTube source URL |
+| Metadata JSON export | ✅ Timestamps, settings, source URL |
+| Re-clip tool | ✅ Re-extract at native quality, optional HQ download |
+| Frame interpolation (FFmpeg) | ✅ Basic quality, local |
+| Frame interpolation (RIFE) | ✅ High quality, Modal.com cloud GPU (T4) |
 
 ### 3D Move Analyzer: 📋 Planned
 See detailed feature spec below.
@@ -95,15 +101,36 @@ The prompt identifies all sections including talking-head segments. Goal: only e
 
 **File:** `src/video_analyzer.py` (lines 82-102)
 
-### 2. 🟡 Upgrade Frame Interpolation
-**Priority:** Medium | **Tool:** Shared
-
-Current FFmpeg minterpolate produces artifacts on fast motion. Options researched and documented in `AGENTS/frame-interpolation-options.md`. Best paths: RIFE (local/cloud) or fal.ai/Replicate API.
-
-### 3. 🔵 Project Reorganization
+### 2. 🔵 Project Reorganization
 **Priority:** Low | **Tool:** All
 
 Reorganize from flat `src/` into `tutorial-generator/`, `3d-analyzer/`, `shared/` structure. Do this when starting the 3D analyzer to avoid disrupting working code.
+
+---
+
+## Completed Tasks
+
+### ✅ RIFE Frame Interpolation on Modal.com (Feb 24, 2026)
+- Deployed RIFE v4.25 (Practical-RIFE) on Modal.com with T4 GPU
+- Model weights from Hugging Face mirror (r3gm/RIFE)
+- Proper slow-motion output (writes at original fps, not multiplied fps)
+- `src/rife_modal.py` — Modal app definition + client-side wrapper
+- `src/interpolate.py` — `--backend rife` flag alongside `--backend ffmpeg`
+- Tested on 1080p clip: 1920x1080, 1135 frames, 46.1 MB
+
+### ✅ Re-clip Tool + Metadata JSON (Feb 24, 2026)
+- `src/reclip.py` — Standalone CLI tool for re-extracting clips
+- `src/output.py` — Saves `tutorial_metadata.json` alongside markdown
+- Supports `--download-hq` to fetch higher quality from YouTube
+- Quality-tagged filenames prevent overwriting existing downloads
+
+### ✅ Multi-Quality YouTube Downloads (Feb 24, 2026)
+- `src/downloader.py` — `quality` parameter with presets: `best_mp4`, `720p`, `1080p`, `best`
+- Separate video+audio stream download with mp4 merge
+
+### ✅ YouTube Source URL in Markdown (Feb 24, 2026)
+- `templates/tutorial.md` — Source URL as blockquote
+- `src/main.py` — `--source-url` CLI flag for use with `--local-file`
 
 ---
 
@@ -278,7 +305,9 @@ These ML models require GPU inference. Options:
 | What | Where |
 |------|-------|
 | Tutorial CLI | `src/main.py` |
+| Re-clip tool | `src/reclip.py` |
 | Frame interpolation | `src/interpolate.py` |
+| RIFE on Modal | `src/rife_modal.py` |
 | Gemini analysis | `src/video_analyzer.py` |
 | API key env var | `GOOGLE_API_KEY` |
 | Output template | `templates/tutorial.md` |
