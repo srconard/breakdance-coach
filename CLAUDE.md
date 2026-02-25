@@ -34,10 +34,9 @@ Tutorial generator works end-to-end. RIFE frame interpolation deployed on Modal.
 - ✅ Blender 4.4 (x64) GLB export with animated armature + skinned mesh
 - ✅ Coordinate transform: SMPL Y-up to Blender Z-up `(x, y, z) -> (x, -z, y)`
 - ✅ Full 3D pipeline: Video -> GVHMR (Modal T4) -> SMPL params + mesh -> Blender GLB -> Obsidian markdown
+- ✅ Uniform bone directions in armature — all bones point +Y so SMPL rotations apply correctly to all joints (fixes leg/spine mismatch)
 
 ### In Progress
-- 🟡 Coordinate transform visual verification (SMPL Y-up to Blender Z-up just implemented)
-- 🟡 Bone orientation tuning for correct rotation application in GLB
 - 🟡 Obsidian 3D viewer integration (have "3D Embed" plugin; may need "model-viewer" or custom HTML embed for animation playback)
 - 🟡 DeepMotion API access (requested, waiting for approval)
 

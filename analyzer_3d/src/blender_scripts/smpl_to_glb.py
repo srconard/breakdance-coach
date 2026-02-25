@@ -126,7 +126,13 @@ def create_smpl_armature(name="SMPL_Armature", joint_positions=None):
                         If None, uses approximate fallback positions.
 
     Creates armature with 22 bones matching SMPL joint hierarchy.
-    Bones are oriented from joint to primary child for correct rotation space.
+
+    IMPORTANT: All bones point in the SAME direction (+Y, tiny length) so that
+    every bone's local frame equals the world frame (identity rest rotation).
+    This is critical because SMPL body_pose rotations are in the parent's
+    world-aligned frame. With uniform bone directions, Blender's pose rotations
+    match SMPL's convention directly — no per-bone compensation needed.
+    (Varying bone directions cause spine vs leg rotation mismatches.)
     """
     # Use real positions (first 22 joints) or fallback
     if joint_positions is not None:
@@ -135,16 +141,6 @@ def create_smpl_armature(name="SMPL_Armature", joint_positions=None):
     else:
         positions = SMPL_FALLBACK_POSITIONS
         print(f"  Using approximate fallback joint positions")
-
-    # Build children map for bone orientation
-    children = {i: [] for i in range(22)}
-    for i, p in enumerate(SMPL_PARENTS):
-        if p >= 0 and i < 22:
-            children[p].append(i)
-
-    # Primary child for bone tail direction (for joints with multiple children)
-    # Spine3(9) -> Neck(12), Pelvis(0) -> Spine1(3)
-    primary_child = {0: 3, 9: 12}
 
     # Create armature
     armature_data = bpy.data.armatures.new(name)
@@ -159,27 +155,11 @@ def create_smpl_armature(name="SMPL_Armature", joint_positions=None):
         bone = armature_data.edit_bones.new(jname)
         head = mathutils.Vector(positions[i])
         bone.head = head
-
-        # Determine tail: point toward primary child, or extend from parent
-        child_list = children[i]
-        if child_list:
-            # Use primary child if specified, otherwise first child
-            child_idx = primary_child.get(i, child_list[0])
-            tail = mathutils.Vector(positions[child_idx])
-        else:
-            # Leaf bone: extend in same direction as parent→this bone
-            if SMPL_PARENTS[i] >= 0:
-                parent_pos = mathutils.Vector(positions[SMPL_PARENTS[i]])
-                direction = (head - parent_pos).normalized()
-                tail = head + direction * 0.05
-            else:
-                tail = head + mathutils.Vector((0, 0, 0.05))
-
-        # Ensure minimum bone length
-        if (tail - head).length < 0.001:
-            tail = head + mathutils.Vector((0, 0, 0.05))
-
-        bone.tail = tail
+        # All bones point +Y with tiny length → bone-local frame = world frame.
+        # This ensures SMPL rotations (in parent's world-aligned frame) can be
+        # applied directly as Blender pose rotations without compensation.
+        bone.tail = head + mathutils.Vector((0, 0.02, 0))
+        bone.roll = 0.0
 
         if SMPL_PARENTS[i] >= 0:
             bone.parent = bones[SMPL_PARENTS[i]]
@@ -192,6 +172,10 @@ def create_smpl_armature(name="SMPL_Armature", joint_positions=None):
 
 def apply_smpl_animation(armature_obj, smpl_data, fps=30):
     """Apply SMPL parameters as keyframe animation to the armature.
+
+    With uniform bone directions (+Y), all bone-local frames equal the world frame.
+    SMPL's coordinate-transformed rotations can be applied directly as pose rotations
+    with no per-bone compensation needed.
 
     Args:
         armature_obj: Blender armature object
@@ -213,23 +197,27 @@ def apply_smpl_animation(armature_obj, smpl_data, fps=30):
     bpy.context.view_layer.objects.active = armature_obj
     bpy.ops.object.mode_set(mode='POSE')
 
+    # Root bone rest position for translation offset
+    pelvis_rest_pos = mathutils.Vector(armature_obj.data.bones["Pelvis"].head_local)
+
     for frame_idx in range(num_frames):
         bpy.context.scene.frame_set(frame_idx + 1)  # Blender frames are 1-indexed
 
-        # Apply root translation
+        # Apply root translation (world-space offset from rest position)
         root_bone = armature_obj.pose.bones["Pelvis"]
         t = transl[frame_idx]
-        root_bone.location = mathutils.Vector((t[0], t[1], t[2]))
+        target = mathutils.Vector((t[0], t[1], t[2]))
+        root_bone.location = target - pelvis_rest_pos
         root_bone.keyframe_insert(data_path="location", frame=frame_idx + 1)
 
-        # Apply root orientation (global_orient)
+        # Apply root orientation (global_orient) — direct, no compensation needed
         orient = global_orient[frame_idx]
         quat = axis_angle_to_quaternion(orient)
         root_bone.rotation_mode = 'QUATERNION'
         root_bone.rotation_quaternion = quat
         root_bone.keyframe_insert(data_path="rotation_quaternion", frame=frame_idx + 1)
 
-        # Apply body joint rotations (joints 1-21)
+        # Apply body joint rotations (joints 1-21) — direct, no compensation needed
         for joint_idx in range(21):
             joint_name = SMPL_JOINT_NAMES[joint_idx + 1]
             pose_bone = armature_obj.pose.bones.get(joint_name)
