@@ -253,7 +253,7 @@ def contact_weights(contacts, F, fps):
 # Stage 3: optimization
 # ---------------------------------------------------------------------------
 
-def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=300, lr=0.01):
+def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=450, lr=0.01):
     fps = float(pkl["fps"])
     g = pkl["smpl_params_global"]
     rest = torch.tensor(pkl["mesh"]["joints"], dtype=torch.float64)
@@ -295,6 +295,10 @@ def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=300, lr=0.01):
     kp_xy = kp[:, coco_idx, :2]
     kp_cf = kp[:, coco_idx, 2]
     kp_w = torch.where(kp_cf > KP_CONF_MIN, kp_cf, torch.zeros_like(kp_cf))
+    # per-frame body-anchor scale: sharp frames (high mean 2D confidence)
+    # loosen the anchor so reprojection can move the pose; blurred frames
+    # tighten it so the GVHMR prior holds. Linear: conf 0.9 -> 0.5x, 0.3 -> 1.5x.
+    anchor_scale = (2.0 - (5.0 / 3.0) * kp_cf.mean(dim=1)).clamp(0.5, 1.5)
 
     d_body = torch.zeros_like(bp0, requires_grad=True)
     d_or = torch.zeros_like(or0, requires_grad=True)
@@ -337,8 +341,8 @@ def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=300, lr=0.01):
         acc = J[2:] - 2 * J[1:-1] + J[:-2]
         e_smooth = (acc.norm(dim=-1) ** 2).mean()
 
-        # anchors
-        e_anchor = (W_ANCHOR_BODY * (d_body ** 2).mean()
+        # anchors (body anchor confidence-scaled per frame)
+        e_anchor = (W_ANCHOR_BODY * (anchor_scale[:, None] * d_body ** 2).mean()
                     + W_ANCHOR_ORIENT * (d_or ** 2).mean()
                     + W_ANCHOR_TRANSL * (d_tr ** 2).mean())
 
@@ -405,7 +409,7 @@ def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=300, lr=0.01):
 
 
 def refine_pkl(input_path, gates_path=None, contacts_path=None, output_path=None,
-               iters_a=250, iters_b=300):
+               iters_a=250, iters_b=450):
     input_path = Path(input_path)
     with open(input_path, "rb") as f:
         pkl = pickle.load(f)
@@ -447,7 +451,7 @@ def main():
     ap.add_argument("--contacts", help="explicit per-effector intervals JSON")
     ap.add_argument("--out", help="output pkl path")
     ap.add_argument("--iters-a", type=int, default=250)
-    ap.add_argument("--iters-b", type=int, default=300)
+    ap.add_argument("--iters-b", type=int, default=450)
     args = ap.parse_args()
     refine_pkl(args.input, args.gates, args.contacts, args.out,
                args.iters_a, args.iters_b)

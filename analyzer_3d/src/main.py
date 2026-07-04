@@ -4,7 +4,8 @@ Converts breakdancing videos into interactive 3D animated models (GLB)
 viewable in Obsidian using the model-viewer plugin.
 
 Pipeline:
-    Video → [GVHMR on Modal] → SMPL params → [motion cleanup] → [Blender] → animated .GLB
+    Video → [GVHMR on Modal] → SMPL params → [VLM contact gates + contact
+    refinement] → [motion cleanup] → [Blender] → animated .GLB
 
 Usage:
     # Full video → 3D model (GVHMR)
@@ -130,6 +131,26 @@ Backends:
     )
 
     parser.add_argument(
+        "--no-refine",
+        action="store_true",
+        help="Skip contact-clamped refinement (VLM gates + reprojection optimization)",
+    )
+
+    parser.add_argument(
+        "--gates",
+        type=str,
+        default=None,
+        help="Existing contact-gates JSON (skips the Gemini VLM annotation call)",
+    )
+
+    parser.add_argument(
+        "--gates-model",
+        type=str,
+        default=None,
+        help="Gemini model for VLM gate annotation (default: vlm_annotate's default)",
+    )
+
+    parser.add_argument(
         "--blender-path",
         type=str,
         default=None,
@@ -201,6 +222,48 @@ def run_gvhmr(video_path: Path, output_dir: Path, static_cam: bool = True) -> Pa
         static_cam=static_cam,
     )
     return pkl_path
+
+
+def run_refine(video_path: Path, pkl_path: Path, gates_arg: str | None,
+               gates_model: str | None) -> Path:
+    """Contact-clamped refinement: VLM contact gates (unless --gates given)
+    then reprojection+contact optimization.
+
+    Returns the refined pkl path, or the input pkl unchanged if refinement
+    can't run (old pkl without 2D keypoints, VLM/API failure) — the rest of
+    the pipeline still works on the unrefined motion.
+    """
+    import pickle
+
+    with open(pkl_path, "rb") as f:
+        if "keypoints_2d" not in pickle.load(f):
+            print("  [refine] pkl has no keypoints_2d (pre-2026-07-04 GVHMR "
+                  "export) — skipping refinement")
+            return pkl_path
+
+    try:
+        if gates_arg:
+            gates_path = Path(gates_arg)
+        else:
+            from analyzer_3d.src.vlm_annotate import annotate
+
+            kwargs = {"model": gates_model} if gates_model else {}
+            gates = annotate(video_path, **kwargs)
+            gates_path = pkl_path.with_name(video_path.stem + "_gates_vlm.json")
+            gates_path.write_text(json.dumps(gates, indent=1), encoding="utf-8")
+            tri = gates.get("triage", {})
+            print(f"  [triage] overall={tri.get('overall', '?')} "
+                  f"blur={tri.get('motion_blur', '?')} issues={tri.get('issues', [])}")
+            if tri.get("overall") == "bad":
+                print("  [triage] WARNING: clip graded 'bad' for pose "
+                      "reconstruction — results will be unreliable")
+
+        from analyzer_3d.src.contact_refine import refine_pkl
+
+        return Path(refine_pkl(str(pkl_path), gates_path=str(gates_path)))
+    except Exception as e:  # noqa: BLE001 - refinement is best-effort
+        print(f"  [refine] skipped ({type(e).__name__}: {e}) — continuing unrefined")
+        return pkl_path
 
 
 def run_cleanup(pkl_path: Path) -> Path:
@@ -283,6 +346,11 @@ def main() -> int:
                 print(f"[3] Running {args.backend} pose estimation...")
                 pkl_path = run_gvhmr(clip["path"], output_dir, static_cam)
 
+                if not args.no_refine:
+                    print("[3.25] Contact refinement (VLM gates)...")
+                    pkl_path = run_refine(clip["path"], pkl_path, args.gates,
+                                          args.gates_model)
+
                 if not args.no_cleanup:
                     print("[3.5] Motion cleanup...")
                     pkl_path = run_cleanup(pkl_path)
@@ -304,6 +372,11 @@ def main() -> int:
             # Full video analysis
             print(f"\n[2] Running {args.backend} pose estimation...")
             pkl_path = run_gvhmr(video_path, output_dir, static_cam)
+
+            if not args.no_refine:
+                print("\n[2.25] Contact refinement (VLM gates)...")
+                pkl_path = run_refine(video_path, pkl_path, args.gates,
+                                      args.gates_model)
 
             if not args.no_cleanup:
                 print("\n[2.5] Motion cleanup...")
