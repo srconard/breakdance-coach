@@ -58,16 +58,22 @@ def scene_animation_range():
 
 
 def animated_bounds(armature, frame_start, frame_end, samples=24):
-    """Bounding box of all pose-bone heads across the animation."""
+    """Bounding box across the animation — pose-bone heads if an armature
+    exists, otherwise the origins of all animated mesh objects (the
+    mannequin export has no armature; its object origins are the joints)."""
     lo = mathutils.Vector((1e9, 1e9, 1e9))
     hi = mathutils.Vector((-1e9, -1e9, -1e9))
     step = max(1, (frame_end - frame_start) // samples)
+    meshes = [o for o in bpy.data.objects if o.type == "MESH"]
     for f in range(frame_start, frame_end + 1, step):
         bpy.context.scene.frame_set(f)
         bpy.context.view_layer.update()
-        mw = armature.matrix_world
-        for pb in armature.pose.bones:
-            p = mw @ pb.head
+        if armature is not None:
+            mw = armature.matrix_world
+            points = [mw @ pb.head for pb in armature.pose.bones]
+        else:
+            points = [o.matrix_world.translation for o in meshes]
+        for p in points:
             lo = mathutils.Vector(map(min, lo, p))
             hi = mathutils.Vector(map(max, hi, p))
     return lo, hi
@@ -149,8 +155,7 @@ def main():
 
     armature = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
     if armature is None:
-        print("ERROR: no armature found in GLB")
-        sys.exit(1)
+        print("No armature in GLB — framing on animated mesh objects (mannequin export)")
 
     fs, fe = scene_animation_range()
     scene = bpy.context.scene

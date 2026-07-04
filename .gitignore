@@ -47,3 +47,7 @@ Thumbs.db
 
 # WHAM checkpoints (large binary files)
 local_checkpoints_wham/
+
+# Viewer build artifacts
+viewer/node_modules/
+viewer/dist/

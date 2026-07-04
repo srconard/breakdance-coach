@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{TITLE}} — Move Study</title>
+<style>
+  :root { --teal: #19b3a6; --orange: #ea6b2e; --bg: #101114; --panel: #1b1d22; --fg: #d7dae0; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 14px; background: var(--panel); }
+  header h1 { font-size: 15px; font-weight: 600; }
+  .legend { display: flex; gap: 10px; font-size: 11px; color: #9aa0a8; }
+  .chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  #main { flex: 1; display: flex; min-height: 0; }
+  #scene { flex: 1; min-width: 0; position: relative; }
+  #scene canvas { display: block; width: 100%; height: 100%; }
+  #videopanel { width: 34%; min-width: 260px; background: #000; display: flex; align-items: center; }
+  #videopanel video { width: 100%; }
+  footer { background: var(--panel); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button { background: #2a2d34; color: var(--fg); border: 1px solid #3a3e46; border-radius: 6px;
+    padding: 5px 11px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #343842; }
+  button.on { background: var(--teal); color: #08221f; border-color: var(--teal); }
+  #play { width: 44px; font-size: 14px; }
+  input[type=range] { flex: 1; accent-color: var(--teal); }
+  #speed { flex: 0 0 130px; }
+  .time { font-variant-numeric: tabular-nums; color: #9aa0a8; min-width: 52px; }
+  .grp { display: flex; gap: 4px; align-items: center; }
+  .lbl { color: #7b818a; font-size: 11px; margin-right: 2px; }
+  #abstate { color: var(--orange); font-size: 11px; min-width: 110px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>{{TITLE}}</h1>
+    <div class="legend">
+      <span><span class="chip" style="background:var(--teal)"></span>LEFT</span>
+      <span><span class="chip" style="background:var(--orange)"></span>RIGHT</span>
+    </div>
+    <div style="flex:1"></div>
+    <div class="grp">
+      <span class="lbl">camera</span>
+      <button id="cam_front">Front</button>
+      <button id="cam_side">Side</button>
+      <button id="cam_top">Top</button>
+      <button id="cam_threequarter">¾</button>
+    </div>
+    <button id="mirror" title="Flip left-right, as if facing a mirror">Mirror</button>
+    <button id="trails" title="Wrist/ankle motion trails">Trails</button>
+    <button id="togglevideo">Video</button>
+  </header>
+  <div id="main">
+    <div id="scene"></div>
+    <div id="videopanel"><video id="vid" playsinline></video></div>
+  </div>
+  <footer>
+    <div class="row">
+      <button id="play">❚❚</button>
+      <span class="time" id="atime">0.00s</span>
+      <input type="range" id="scrub" min="0" max="14" step="0.0333" value="0">
+      <span class="time" id="btime">—</span>
+    </div>
+    <div class="row">
+      <span class="lbl">speed</span>
+      <input type="range" id="speed" min="0.1" max="1" step="0.05" value="1">
+      <span class="time" id="speedval">1.00×</span>
+      <div class="grp">
+        <button id="sp01">0.1×</button><button id="sp025">0.25×</button>
+        <button id="sp05">0.5×</button><button id="sp1">1×</button>
+      </div>
+      <div class="grp" style="margin-left:14px">
+        <span class="lbl">loop</span>
+        <button id="seta">Set A</button><button id="setb">Set B</button>
+        <button id="clearab">Clear</button><span id="abstate"></span>
+      </div>
+      <div style="flex:1"></div>
+      <span class="lbl">space = play/pause · ←/→ = frame step · drag = orbit</span>
+    </div>
+  </footer>
+</div>
+<script>
+window.__VIEWER__ = {
+  title: "{{TITLE}}",
+  fps: {{FPS}},
+  videoOffset: {{VIDEO_OFFSET}},
+  glbB64: "{{GLB_B64}}",
+  videoB64: "{{VIDEO_B64}}",
+};
+</script>
+<script>
+{{BUNDLE_JS}}
+</script>
+</body>
+</html>
