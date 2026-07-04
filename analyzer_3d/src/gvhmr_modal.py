@@ -311,6 +311,14 @@ class GVHMREstimator:
             "smpl_params_incam": detach_to_cpu(pred["smpl_params_incam"]),
             "fps": fps,
             "num_frames": total_frames,
+            # Evidence for the contact-clamped refinement stage (Phase 1.5 v2):
+            # ViTPose 2D keypoints in full-image pixels + the intrinsics GVHMR
+            # used, so a downstream optimizer can do reprojection against the
+            # same camera model.
+            "keypoints_2d": detach_to_cpu(kp2d),      # (F, 17, 3) COCO17 x,y,conf
+            "bbx_xys": detach_to_cpu(bbx_xys),        # (F, 3) cx, cy, size
+            "K_fullimg": detach_to_cpu(K_fullimg[0]), # (3, 3) constant per clip
+            "video_wh": (width, height),
         }
 
         # Extract SMPL body mesh for GLB export (6890 vertices, proper skinning)

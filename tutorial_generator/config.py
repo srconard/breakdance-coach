@@ -51,6 +51,9 @@ def get_api_key(provider: str) -> str:
 
     key_name = key_names[provider]
     api_key = os.environ.get(key_name)
+    if not api_key and provider == "google":
+        # Gemini docs (and the rest of this system) use GEMINI_API_KEY
+        api_key = os.environ.get("GEMINI_API_KEY")
 
     if not api_key:
         raise ValueError(

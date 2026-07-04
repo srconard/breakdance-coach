@@ -44,3 +44,6 @@ Thumbs.db
 # Temp files
 *.tmp
 *.bak
+
+# WHAM checkpoints (large binary files)
+local_checkpoints_wham/

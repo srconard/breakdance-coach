@@ -28,6 +28,17 @@ import bpy
 import mathutils
 import numpy as np
 
+# Blender bundles numpy 1.x; pickles written by numpy >= 2 reference the renamed
+# numpy._core modules. Alias them so those pickles load here.
+import numpy.core as _np_core
+sys.modules.setdefault("numpy._core", _np_core)
+for _sub in ("numeric", "multiarray", "umath", "_multiarray_umath"):
+    _key = f"numpy._core.{_sub}"
+    if _key not in sys.modules:
+        _mod = getattr(_np_core, _sub, None)
+        if _mod is not None:
+            sys.modules[_key] = _mod
+
 
 # SMPL joint names in order (24 joints total)
 # global_orient = joint 0 (root), body_pose = joints 1-21
@@ -197,17 +208,16 @@ def apply_smpl_animation(armature_obj, smpl_data, fps=30):
     bpy.context.view_layer.objects.active = armature_obj
     bpy.ops.object.mode_set(mode='POSE')
 
-    # Root bone rest position for translation offset
-    pelvis_rest_pos = mathutils.Vector(armature_obj.data.bones["Pelvis"].head_local)
-
     for frame_idx in range(num_frames):
         bpy.context.scene.frame_set(frame_idx + 1)  # Blender frames are 1-indexed
 
-        # Apply root translation (world-space offset from rest position)
+        # Apply root translation. SMPL convention: world pelvis = rest_pelvis + transl,
+        # and pose-bone location is the offset from the bone's rest head, so
+        # location = transl directly. (Subtracting pelvis_rest_pos here shifted the
+        # whole body by -rest_pelvis (~23 cm vertically) — the old floating-body bug.)
         root_bone = armature_obj.pose.bones["Pelvis"]
         t = transl[frame_idx]
-        target = mathutils.Vector((t[0], t[1], t[2]))
-        root_bone.location = target - pelvis_rest_pos
+        root_bone.location = mathutils.Vector((t[0], t[1], t[2]))
         root_bone.keyframe_insert(data_path="location", frame=frame_idx + 1)
 
         # Apply root orientation (global_orient) — direct, no compensation needed
@@ -536,9 +546,9 @@ def main():
     with open(input_path, "rb") as f:
         smpl_data = pickle.load(f)
 
-    # Use video FPS if available
+    # Use video FPS if available (round, don't truncate: 29.97 -> 30, not 29)
     if "fps" in smpl_data:
-        fps = int(smpl_data["fps"])
+        fps = int(round(float(smpl_data["fps"])))
         print(f"  Using video FPS: {fps}")
 
     # Transform SMPL data from Y-up to Blender Z-up coordinate system

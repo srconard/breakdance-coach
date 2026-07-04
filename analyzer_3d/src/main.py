@@ -4,7 +4,7 @@ Converts breakdancing videos into interactive 3D animated models (GLB)
 viewable in Obsidian using the model-viewer plugin.
 
 Pipeline:
-    Video → [GVHMR on Modal] → SMPL params → [Blender] → animated .GLB
+    Video → [GVHMR on Modal] → SMPL params → [motion cleanup] → [Blender] → animated .GLB
 
 Usage:
     # Full video → 3D model (GVHMR)
@@ -124,6 +124,12 @@ Backends:
     )
 
     parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        help="Skip motion cleanup (smoothing, contact locking, floor clamping)",
+    )
+
+    parser.add_argument(
         "--blender-path",
         type=str,
         default=None,
@@ -197,6 +203,16 @@ def run_gvhmr(video_path: Path, output_dir: Path, static_cam: bool = True) -> Pa
     return pkl_path
 
 
+def run_cleanup(pkl_path: Path) -> Path:
+    """Run Phase 1 motion cleanup (smoothing, contact locking, floor clamp).
+
+    Returns path to the cleaned pickle.
+    """
+    from analyzer_3d.src.motion_cleanup import clean_pkl
+
+    return Path(clean_pkl(pkl_path))
+
+
 def run_export(pkl_path: Path, output_dir: Path, fps: int | None, blender_path: str | None) -> Path:
     """Export SMPL parameters to GLB.
 
@@ -267,6 +283,10 @@ def main() -> int:
                 print(f"[3] Running {args.backend} pose estimation...")
                 pkl_path = run_gvhmr(clip["path"], output_dir, static_cam)
 
+                if not args.no_cleanup:
+                    print("[3.5] Motion cleanup...")
+                    pkl_path = run_cleanup(pkl_path)
+
                 if not args.smpl_only:
                     # Export GLB
                     print(f"[4] Exporting GLB...")
@@ -284,6 +304,10 @@ def main() -> int:
             # Full video analysis
             print(f"\n[2] Running {args.backend} pose estimation...")
             pkl_path = run_gvhmr(video_path, output_dir, static_cam)
+
+            if not args.no_cleanup:
+                print("\n[2.5] Motion cleanup...")
+                pkl_path = run_cleanup(pkl_path)
 
             glb_paths = []
             step_labels = [video_title]
