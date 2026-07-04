@@ -79,7 +79,7 @@ def analyze_video(video_path: Path, model_name: str = "gemini-2.5-flash") -> lis
     model = genai.GenerativeModel(model_name=model_name)
 
     # Prompt for step identification
-    prompt = """You are analyzing a breakdancing tutorial video. Your task is to identify the distinct steps or moves being taught.
+    prompt = """You are analyzing a breakdancing tutorial video. Your task is to identify ONLY the time ranges where a move is physically demonstrated.
 
 For each step, provide:
 1. "start": The exact timestamp when the step begins (format: MM:SS)
@@ -87,9 +87,12 @@ For each step, provide:
 3. "label": A short, descriptive label for the step (2-5 words)
 
 Guidelines:
-- Focus on distinct teaching moments or moves
-- Include setup positions and transitions if they are clearly explained
+- Include segments only when the dancer is actively showing a move or body position.
+- Exclude talking-head sections, intros, outros, pauses, jokes, sponsor mentions, and pure verbal explanation with no visible demonstration.
+- Include setup positions and transitions only when they are physically demonstrated on camera.
 - Make sure timestamps don't overlap
+- Prefer contiguous demonstrated ranges over many tiny clips.
+- Every returned step must have visible movement or held position relevant to learning the move.
 - Labels should be clear and action-oriented (e.g., "Basic Toprock Step", "Drop to Six-Step", "Freeze Position")
 
 Return ONLY a valid JSON array with no additional text or markdown formatting.

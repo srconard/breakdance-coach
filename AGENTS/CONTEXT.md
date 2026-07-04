@@ -1,110 +1,91 @@
-# AI Agent Context - Breakdance Coach Project
+# AI Agent Context - Breakdance Coach
 
-**Last Updated:** February 23, 2026
+Last updated: 2026-03-06
 
 ## Quick Status
 
-🟢 **Full pipeline working.** YouTube downloads intermittent. Frame interpolation tool available.
+- Tutorial pipeline works end-to-end.
+- Re-clip workflow works from saved metadata.
+- Interpolation has two backends: FFmpeg local and RIFE on Modal.
+- 3D pipeline is implemented; viewer integration/UX is the main open area.
+
+## Primary Commands
 
 ```bash
-# Generate tutorial
-python -m src.main --local-file "video.mp4" --title "Tutorial" --format mp4
+# Tutorial from local file
+python -m tutorial_generator.src.main --local-file "video.mp4" --title "Tutorial" --format mp4
 
-# Slow-mo a clip
-python -m src.interpolate "clip.mp4" --slowdown 3
+# Tutorial from YouTube
+python -m tutorial_generator.src.main "https://youtube.com/watch?v=VIDEO_ID" --format mp4
+
+# Re-clip using metadata
+python -m tutorial_generator.src.reclip "output/My_Tutorial" --step 3 --download-hq 1080p
+
+# Slow-mo clip (local)
+python -m shared.interpolate "clip.mp4" --slowdown 3 --backend ffmpeg
+
+# Slow-mo clip (cloud)
+python -m shared.interpolate "clip.mp4" --slowdown 3 --backend rife
+
+# 3D analysis
+python -m analyzer_3d.src.main "video.mp4" --backend gvhmr
 ```
-
-## Project Purpose
-
-A tool to help learn breakdancing by converting YouTube tutorial videos into digestible, step-by-step GIF/video tutorials with descriptions. Output is designed for Obsidian note-taking.
 
 ## Architecture
 
 ```
-Video Input (local file or YouTube URL)
-    ↓
-[yt-dlp] Download (android_vr/tv client workaround)
-    ↓
-[ffmpeg] Preprocess (480p, 15fps, trim)
-    ↓
-[Gemini 2.5 Flash] Analyze video → steps + timestamps
-    ↓
-[LLM] Generate descriptions (Google/Anthropic/OpenAI)
-    ↓
-[ffmpeg] Create GIFs/MP4/WebM from ORIGINAL video
-    ↓
-[Jinja2] Obsidian Markdown output
+Video input (local or YouTube)
+  -> downloader/preprocess
+  -> Gemini step extraction
+  -> description generation
+  -> clip rendering from original video
+  -> markdown + metadata output
+```
+
+3D path:
+
+```
+Video input
+  -> GVHMR inference (Modal)
+  -> SMPL mesh/pose data
+  -> Blender headless GLB export
+  -> markdown embed output
 ```
 
 ## Key Design Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Gemini 2.5 Flash for video analysis | Native video upload, cost effective |
-| Multi-provider descriptions | User wants to compare LLMs |
-| Obsidian Markdown output | User's note-taking system |
-| MP4 recommended over GIF | 8x smaller, playback controls |
-| Cost reduction defaults | 480p + 15fps reduces API costs |
-| Frame interpolation as standalone tool | Used on-demand for specific clips |
+- Gemini Flash is the default for step extraction.
+- Keep tutorial media sourced from the original video quality.
+- Persist metadata to enable re-clipping without re-running AI analysis.
+- Keep FFmpeg backend as local fallback for interpolation.
 
 ## Critical File Locations
 
-| What | Where | Notes |
-|------|-------|-------|
-| CLI entry | `src/main.py` | Orchestrates pipeline |
-| Gemini analysis | `src/video_analyzer.py` | `gemini-2.5-flash` |
-| Description gen | `src/description.py` | `gemini-2.5-flash` |
-| Frame interpolation | `src/interpolate.py` | Standalone slow-mo tool |
-| Core dataclass | `src/video_analyzer.py` | `TutorialStep` |
-| Output template | `templates/tutorial.md` | Jinja2 |
-| API key | `GOOGLE_API_KEY` env var | Never hardcoded |
+| What | Where |
+|------|-------|
+| Tutorial orchestrator | `tutorial_generator/src/main.py` |
+| Step extraction prompt and parsing | `tutorial_generator/src/video_analyzer.py` |
+| Description generation | `tutorial_generator/src/description.py` |
+| Clip generation | `tutorial_generator/src/gif_creator.py` |
+| Markdown + metadata output | `tutorial_generator/src/output.py` |
+| Re-clip command | `tutorial_generator/src/reclip.py` |
+| Downloader | `shared/downloader.py` |
+| Interpolation | `shared/interpolate.py` |
+| RIFE Modal integration | `shared/rife_modal.py` |
+| 3D CLI | `analyzer_3d/src/main.py` |
+| GVHMR Modal flow | `analyzer_3d/src/gvhmr_modal.py` |
+| 3D export | `analyzer_3d/src/exporter.py` |
 
-## Code Patterns
+## Current Risks
 
-### TutorialStep Dataclass
-```python
-@dataclass
-class TutorialStep:
-    step_number: int
-    start_time: str      # "MM:SS"
-    end_time: str        # "MM:SS"
-    label: str           # Short description
-    start_seconds: float # Auto-computed
-    end_seconds: float   # Auto-computed
-```
+1. Step extraction can include talking-head sections if prompt is too broad.
+2. Gemini/download API failures need stronger retry and diagnostics.
+3. Gemini SDK migration to `google.genai` is pending.
+4. Test coverage is minimal.
 
-### Gemini Video Upload Pattern
-```python
-video_file = genai.upload_file(path=str(video_path))
-while video_file.state.name == "PROCESSING":
-    time.sleep(2)
-    video_file = genai.get_file(video_file.name)
-```
+## Minimal Validation Checklist
 
-### Frame Interpolation Pattern
-```python
-# Uses FFmpeg minterpolate filter (optical flow)
-# slowdown=3 at fps=60 → generates 180fps interpolated then outputs at 60fps
-python -m src.interpolate "clip.mp4" --slowdown 3 --fps 60
-```
-
-## What's Been Tested
-
-| Component | Tested | Notes |
-|-----------|--------|-------|
-| Dependencies install | ✅ | All packages working |
-| YouTube download | ✅ | Works with android_vr/tv clients |
-| Full pipeline (local) | ✅ | 14-step and 18-step tutorials generated |
-| Full pipeline (YouTube) | ✅ | FLARE Workout video downloaded and processed |
-| Frame interpolation | ✅ | FFmpeg minterpolate working |
-
-## Dependencies
-
-All installed and working:
-- yt-dlp (latest)
-- google-generativeai (deprecated but functional)
-- anthropic
-- openai
-- ffmpeg-python
-- jinja2
-- FFmpeg 6.0 (system)
+1. Run tutorial CLI on a known local test clip.
+2. Confirm markdown, media clips, and `tutorial_metadata.json` exist.
+3. Verify at least one re-clip command succeeds from metadata.
+4. If 3D-related code changes, verify `.glb` output loads and animates.
