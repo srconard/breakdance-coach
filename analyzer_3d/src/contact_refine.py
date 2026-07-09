@@ -57,6 +57,13 @@ SMPL_FOR_COCO = {
 }
 REPROJ_PAIRS = [(SMPL_FOR_COCO[k], COCO[k]) for k in COCO]
 
+# Leg joints in SMPL body_pose layout (joints 1..21 -> slot j-1). Used by
+# --protect-legs: freeze these to raw GVHMR so reprojection (depth-ambiguous
+# single-view) can't drag the 3D legs off the multi-view-consistent pose it
+# already has. See 2026-07-05-leg-extension-investigation (Finding 2).
+LEG_SMPL_JOINTS = [1, 2, 4, 5, 7, 8, 10, 11]  # hips, knees, ankles, feet
+LEG_BODY_SLOTS = [j - 1 for j in LEG_SMPL_JOINTS]
+
 # Effectors: contact is enforced on the distal "tip" joint (toes / hand)
 EFFECTOR_TIPS = {"L_ankle": 10, "R_ankle": 11, "L_wrist": 22, "R_wrist": 23}
 EFFECTOR_KP = {"L_ankle": 15, "R_ankle": 16, "L_wrist": 9, "R_wrist": 10}
@@ -253,7 +260,8 @@ def contact_weights(contacts, F, fps):
 # Stage 3: optimization
 # ---------------------------------------------------------------------------
 
-def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=450, lr=0.01):
+def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=450, lr=0.01,
+           protect_legs=False):
     fps = float(pkl["fps"])
     g = pkl["smpl_params_global"]
     rest = torch.tensor(pkl["mesh"]["joints"], dtype=torch.float64)
@@ -304,8 +312,18 @@ def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=450, lr=0.01):
     d_or = torch.zeros_like(or0, requires_grad=True)
     d_tr = torch.zeros_like(tr0, requires_grad=True)
 
+    # leg-protection mask: zero the leg-joint deltas so those joints stay at
+    # raw GVHMR (which multi-view paired tests show is already close), while
+    # arms/spine/global still refine to plant hands + fix drift.
+    body_mask = torch.ones_like(bp0[0])
+    if protect_legs:
+        idx = np.array([s * 3 + k for s in LEG_BODY_SLOTS for k in range(3)])
+        body_mask[idx] = 0.0
+        print(f"[protect-legs] freezing {len(LEG_BODY_SLOTS)} leg joints "
+              "(hips/knees/ankles/feet) to raw GVHMR")
+
     def losses(stage_b, sigma):
-        body = bp0 + d_body if stage_b else bp0
+        body = bp0 + d_body * body_mask if stage_b else bp0
         orient = or0 + d_or
         transl = tr0 + d_tr
         J = fk_t(body, orient, transl, rest)              # (F, 24, 3)
@@ -370,7 +388,7 @@ def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=450, lr=0.01):
     print(f"[opt] stage B: + body pose, {iters_b} iters")
     run_stage([d_body, d_or, d_tr], iters_b, True, 0.05, "B")
 
-    body = (bp0 + d_body).detach().numpy().astype(np.float32)
+    body = (bp0 + d_body * body_mask).detach().numpy().astype(np.float32)
     orient = (or0 + d_or).detach().numpy().astype(np.float32)
     transl = (tr0 + d_tr).detach().numpy().astype(np.float32)
 
@@ -399,17 +417,18 @@ def refine(pkl, gates=None, contacts=None, iters_a=250, iters_b=450, lr=0.01):
         "t_world2cam": t_wc.tolist(),
         "tip_height_before": before,
         "tip_height_after": after,
+        "protect_legs": protect_legs,
         "deltas": {
             "transl_max_cm": float(np.abs(d_tr.detach().numpy()).max() * 100),
             "orient_max_deg": float(np.abs(d_or.detach().numpy()).max() * 57.3),
-            "body_max_deg": float(np.abs(d_body.detach().numpy()).max() * 57.3),
+            "body_max_deg": float(np.abs((d_body * body_mask).detach().numpy()).max() * 57.3),
         },
     }
     return body, orient, transl, report
 
 
 def refine_pkl(input_path, gates_path=None, contacts_path=None, output_path=None,
-               iters_a=250, iters_b=450):
+               iters_a=250, iters_b=450, protect_legs=False):
     input_path = Path(input_path)
     with open(input_path, "rb") as f:
         pkl = pickle.load(f)
@@ -423,7 +442,8 @@ def refine_pkl(input_path, gates_path=None, contacts_path=None, output_path=None
     if gates is None and contacts is None:
         raise ValueError("need --gates (coarse windows) or --contacts (explicit)")
 
-    body, orient, transl, report = refine(pkl, gates, contacts, iters_a, iters_b)
+    body, orient, transl, report = refine(pkl, gates, contacts, iters_a, iters_b,
+                                          protect_legs=protect_legs)
 
     out = dict(pkl)
     out["smpl_params_global"] = dict(pkl["smpl_params_global"])
@@ -452,9 +472,12 @@ def main():
     ap.add_argument("--out", help="output pkl path")
     ap.add_argument("--iters-a", type=int, default=250)
     ap.add_argument("--iters-b", type=int, default=450)
+    ap.add_argument("--protect-legs", action="store_true",
+                    help="freeze leg joints to raw GVHMR (see leg-extension "
+                         "investigation Finding 2)")
     args = ap.parse_args()
     refine_pkl(args.input, args.gates, args.contacts, args.out,
-               args.iters_a, args.iters_b)
+               args.iters_a, args.iters_b, protect_legs=args.protect_legs)
 
 
 if __name__ == "__main__":

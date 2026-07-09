@@ -151,10 +151,37 @@ Backends:
     )
 
     parser.add_argument(
+        "--refine-legs",
+        action="store_true",
+        help="Let refinement move leg joints (default: legs are protected — "
+             "kept at raw GVHMR, which multi-view paired tests show is more "
+             "accurate than single-view reprojection)",
+    )
+
+    parser.add_argument(
         "--blender-path",
         type=str,
         default=None,
         help="Path to Blender executable (auto-detected if not set)",
+    )
+
+    parser.add_argument(
+        "--no-bundle",
+        action="store_true",
+        help="Skip the study bundle (mannequin GLB + viewer HTML)",
+    )
+
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="Grade the output with the Gemini VLM judge (adds preview render + side-by-side)",
+    )
+
+    parser.add_argument(
+        "--judge-model",
+        type=str,
+        default=None,
+        help="Gemini model for the judge (default: vlm_judge's default)",
     )
 
     return parser.parse_args()
@@ -225,9 +252,15 @@ def run_gvhmr(video_path: Path, output_dir: Path, static_cam: bool = True) -> Pa
 
 
 def run_refine(video_path: Path, pkl_path: Path, gates_arg: str | None,
-               gates_model: str | None) -> Path:
+               gates_model: str | None, protect_legs: bool = True) -> Path:
     """Contact-clamped refinement: VLM contact gates (unless --gates given)
     then reprojection+contact optimization.
+
+    protect_legs (default True): freeze leg joints to raw GVHMR. Paired
+    multi-view tests (2026-07-05) showed single-view reprojection DEGRADES
+    per-frame leg accuracy (knee error ~doubled) while helping nothing legs
+    do — the support contacts are hands. Protecting legs recovers raw's
+    accuracy and keeps the hand-grounding. See leg-extension investigation.
 
     Returns the refined pkl path, or the input pkl unchanged if refinement
     can't run (old pkl without 2D keypoints, VLM/API failure) — the rest of
@@ -260,7 +293,8 @@ def run_refine(video_path: Path, pkl_path: Path, gates_arg: str | None,
 
         from analyzer_3d.src.contact_refine import refine_pkl
 
-        return Path(refine_pkl(str(pkl_path), gates_path=str(gates_path)))
+        return Path(refine_pkl(str(pkl_path), gates_path=str(gates_path),
+                               protect_legs=protect_legs))
     except Exception as e:  # noqa: BLE001 - refinement is best-effort
         print(f"  [refine] skipped ({type(e).__name__}: {e}) — continuing unrefined")
         return pkl_path
@@ -274,6 +308,25 @@ def run_cleanup(pkl_path: Path) -> Path:
     from analyzer_3d.src.motion_cleanup import clean_pkl
 
     return Path(clean_pkl(pkl_path))
+
+
+def run_bundle(pkl_path: Path, video_path: Path, title: str, output_dir: Path,
+               skinned_glb: Path | None, args) -> None:
+    """Produce the study bundle (mannequin GLB + viewer HTML, optional judge).
+
+    Best-effort: a bundle failure never loses the pipeline run — the pkl and
+    skinned GLB already exist on disk.
+    """
+    from analyzer_3d.src.bundle import make_bundle
+
+    try:
+        make_bundle(pkl_path, video=video_path, title=title,
+                    out_dir=output_dir, judge=args.judge,
+                    judge_model=args.judge_model, skinned_glb=skinned_glb,
+                    blender_path=args.blender_path)
+    except Exception as e:  # noqa: BLE001 - packaging is best-effort
+        print(f"  [bundle] failed ({type(e).__name__}: {e}) — pkl and GLB "
+              "are still on disk")
 
 
 def run_export(pkl_path: Path, output_dir: Path, fps: int | None, blender_path: str | None) -> Path:
@@ -349,7 +402,8 @@ def main() -> int:
                 if not args.no_refine:
                     print("[3.25] Contact refinement (VLM gates)...")
                     pkl_path = run_refine(clip["path"], pkl_path, args.gates,
-                                          args.gates_model)
+                                          args.gates_model,
+                                          protect_legs=not args.refine_legs)
 
                 if not args.no_cleanup:
                     print("[3.5] Motion cleanup...")
@@ -365,6 +419,11 @@ def main() -> int:
                     glb_paths.append(final_glb)
                     step_labels.append(clip["label"])
 
+                    if not args.no_bundle:
+                        print("[4.5] Study bundle (mannequin + viewer)...")
+                        run_bundle(pkl_path, clip["path"], clip["label"],
+                                   output_dir, final_glb, args)
+
                 # Cleanup temp clip
                 clip["path"].unlink(missing_ok=True)
 
@@ -376,7 +435,8 @@ def main() -> int:
             if not args.no_refine:
                 print("\n[2.25] Contact refinement (VLM gates)...")
                 pkl_path = run_refine(video_path, pkl_path, args.gates,
-                                      args.gates_model)
+                                      args.gates_model,
+                                      protect_legs=not args.refine_legs)
 
             if not args.no_cleanup:
                 print("\n[2.5] Motion cleanup...")
@@ -389,6 +449,11 @@ def main() -> int:
                 print(f"\n[3] Exporting GLB...")
                 glb_path = run_export(pkl_path, output_dir, args.fps, args.blender_path)
                 glb_paths.append(glb_path)
+
+                if not args.no_bundle:
+                    print("\n[3.5] Study bundle (mannequin + viewer)...")
+                    run_bundle(pkl_path, video_path, video_title, output_dir,
+                               glb_path, args)
 
         # Generate Obsidian markdown
         if glb_paths and not args.smpl_only:

@@ -26,6 +26,29 @@ from .motion_cleanup import fk
 BLENDER_SCRIPT = Path(__file__).parent / "blender_scripts" / "mannequin_glb.py"
 
 
+def glb_from_npz(npz_path, output_glb, blender_path=None):
+    """Run the Blender mannequin builder on an existing motion npz
+    (JW/G/rest/fps — see mannequin_glb.py). Used by export_mannequin and by
+    the BVH/FBX import path (mocap_import.py), which has no SMPL pkl."""
+    blender = blender_path or find_blender()
+    if not blender:
+        raise FileNotFoundError("Blender not found (needed for GLB export)")
+    output_glb = Path(output_glb)
+    cmd = [str(blender), "-b", "--python", str(BLENDER_SCRIPT), "--",
+           str(npz_path), str(output_glb.resolve())]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    marker = "[mannequin_glb] DONE"
+    if marker not in r.stdout:
+        print(r.stdout[-3000:])
+        print(r.stderr[-2000:])
+        raise RuntimeError("mannequin Blender export failed")
+    for line in r.stdout.splitlines():
+        if line.startswith("[mannequin_glb]"):
+            print(" ", line)
+    print(f"[mannequin] wrote {output_glb} ({output_glb.stat().st_size / 1e6:.2f} MB)")
+    return str(output_glb)
+
+
 def export_mannequin(input_pkl, output_glb=None, blender_path=None):
     input_pkl = Path(input_pkl)
     if output_glb is None:
@@ -41,26 +64,10 @@ def export_mannequin(input_pkl, output_glb=None, blender_path=None):
     fps = float(pkl["fps"])
     print(f"[mannequin] {jw.shape[0]} frames @ {fps:.2f} fps")
 
-    blender = blender_path or find_blender()
-    if not blender:
-        raise FileNotFoundError("Blender not found (needed for GLB export)")
-
     with tempfile.TemporaryDirectory(prefix="mannequin_") as td:
         npz = Path(td) / "motion.npz"
         np.savez(npz, JW=jw, G=G, rest=rest, fps=np.float64(fps))
-        cmd = [str(blender), "-b", "--python", str(BLENDER_SCRIPT), "--",
-               str(npz), str(output_glb.resolve())]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-        marker = "[mannequin_glb] DONE"
-        if marker not in r.stdout:
-            print(r.stdout[-3000:])
-            print(r.stderr[-2000:])
-            raise RuntimeError("mannequin Blender export failed")
-        for line in r.stdout.splitlines():
-            if line.startswith("[mannequin_glb]"):
-                print(" ", line)
-    print(f"[mannequin] wrote {output_glb} ({output_glb.stat().st_size / 1e6:.2f} MB)")
-    return str(output_glb)
+        return glb_from_npz(npz, output_glb, blender_path)
 
 
 def main():
