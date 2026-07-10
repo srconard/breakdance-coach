@@ -42,8 +42,12 @@ assets_volume = modal.Volume.from_name("dart-assets", create_if_missing=True)
 DART_SHA = "bb67ae1ed6ce051080468bf15bc6e54a6c3f8417"  # verified 2026-07-09
 GDRIVE_FOLDER = "https://drive.google.com/drive/folders/1vJg3GFVPT6kr6cA0HrQGmiAEBE2dkaps"
 
-# Local paths (client side)
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# Local paths (client side). Inside the Modal container this file lives at
+# /root/dart_modal.py (no parents[2]) -- these paths are only used client-side.
+try:
+    REPO_ROOT = Path(__file__).resolve().parents[2]
+except IndexError:
+    REPO_ROOT = Path("/root")
 SCENE_GLB = REPO_ROOT / "output" / "reference_library" / "qa" / "test_scene.glb"
 OUT_DIR = REPO_ROOT / "output" / "dart_rehearsal"
 
@@ -80,6 +84,8 @@ dart_image = (
         "tensorboard",
         "tqdm",
         "spacy",
+        "click",
+        "torch-dct",
         "loralib",
         "ftfy",
         "regex",
@@ -187,7 +193,7 @@ def download_assets_remote(force: bool = False) -> str:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     proc = subprocess.run(
-        ["gdown", "--folder", GDRIVE_FOLDER, "-O", str(tmp), "--remaining-ok"],
+        ["gdown", "--folder", GDRIVE_FOLDER, "-O", str(tmp)],
         capture_output=True, text=True,
     )
     log = proc.stdout[-3000:] + "\n" + proc.stderr[-3000:]
