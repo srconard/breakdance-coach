@@ -29,8 +29,12 @@ downloads/
 local_checkpoints/
 inbox/
 
-# Generated output
-output/
+# Generated output (except the ingest automation scripts, which are code)
+output/*
+!output/ig_ingest/
+output/ig_ingest/*
+!output/ig_ingest/nightly_ingest.ps1
+!output/ig_ingest/nas_ingest_runner.py
 
 # Environment / secrets
 .env

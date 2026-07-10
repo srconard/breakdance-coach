@@ -1,0 +1,7 @@
+{ "title": "Afford demo: enter -> low platform -> crate freeze (test scene)",
+  "scene": "output/reference_library/qa/test_scene.glb",
+  "start": {"at": [0.0, -4.4], "heading_deg": 0},
+  "stations": [
+    {"label": "enter center", "at": [0.3, 0.3], "text": "walk"},
+    {"label": "low platform", "at": [-2.8, -3.4], "surface_z": 0.45, "text": "walk", "target_object": "low platform"},
+    {"label": "crate freeze", "at": [2.5, -1.6], "text": "does a freeze on the crate", "target_object": "big crate", "contact_ref": "freeze"} ] }
