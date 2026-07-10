@@ -1,10 +1,16 @@
 """Build the move-organized breakdance library (moves.html).
 
 The reference_library index groups by DATASET; this groups by MOVE — one card
-per move (Flair, 1990, Footwork, Freeze, Uprock, power moves...), each linking
-its clean reference animation(s), and where we have them, the tutorial-wiki
-breakdown and Shawn's own reconstruction. The long mocap freestyles
-(AIST++/FineDance) are listed separately as multi-move runs until tagged.
+per move (Flair, 1990, Swipes, Footwork, Freeze, Uprock, power moves...), each
+linking its clean reference animation(s), and where we have them, the
+tutorial-wiki breakdown and Shawn's own reconstruction. The long mocap
+freestyles (AIST++/FineDance) are listed separately as multi-move runs.
+
+Move tags: if output/reference_library/move_tags.json exists (produced by
+vlm_movetag.py --merge-into; keyed by library stem), each freestyle run shows
+its VLM-detected move segments with timestamps, and each move card gains a
+"seen in freestyles" cross-reference. Timestamps are text only — the viewer
+has no ?t= playback deep-link (its only URL param is the ?shot= QA hook).
 
 Accurate by construction: the reference animations are mocap / Mixamo clean
 animation, so they don't carry the single-view leg-extension limit that our
@@ -16,6 +22,7 @@ Usage:
 
 import argparse
 import html
+import json
 import sys
 from pathlib import Path
 from urllib.parse import quote
@@ -47,6 +54,11 @@ MOVES = [
         "name": "Breakdance 1990",
         "blurb": "One-handed handstand spin — balance on a single hand and rotate.",
         "anims": [("Mixamo · Beta mannequin", "mixamo_beta/Breakdance 1990_viewer.html")],
+    },
+    {
+        "name": "Swipes",
+        "blurb": "Rotational power move — the chest twists first and the hands trade support while hips and legs whip around to follow, landing feet-to-hands again.",
+        "anims": [("Mixamo · Beta mannequin", "mixamo_beta/Breakdance Swipes_viewer.html")],
     },
     {
         "name": "Footwork",
@@ -88,12 +100,29 @@ MOVES = [
     },
 ]
 
-# Multi-move freestyle runs (not single moves — browse/scrub; tag later)
+# Multi-move freestyle runs (not single moves — browse/scrub). Runs whose
+# library stem appears in move_tags.json get per-segment move tags rendered.
 FREESTYLE = [
     ("CMU · Long Break Sequence", "cmu85/85_12_viewer.html"),
     ("CMU · Break Sequence w/ Flips", "cmu85/85_14_viewer.html"),
     ("AIST++ · Advanced pro freestyle (48s)", "aistpp/gBR_sFM_cAll_d04_mBR0_ch01_viewer.html"),
 ]
+
+# vlm_movetag.py MOVE_VOCAB label -> move card name above. Labels with no
+# card (transition, kick-up, other) are shown on the run but not cross-linked.
+TAG_TO_CARD = {
+    "toprock": "Uprock / Toprock", "uprock": "Uprock / Toprock",
+    "6-step": "Footwork", "footwork-other": "Footwork", "cc": "Footwork",
+    "swipe": "Swipes",
+    "flare": "Flair",
+    "1990": "Breakdance 1990", "2000": "Breakdance 1990",
+    "windmill": "Power moves (misc)", "headspin": "Power moves (misc)",
+    "backspin": "Power moves (misc)", "halo": "Power moves (misc)",
+    "power-combo": "Power moves (misc)",
+    "baby-freeze": "Freezes", "chair-freeze": "Freezes",
+    "airchair": "Freezes", "elbow-freeze": "Freezes",
+    "handstand-freeze": "Freezes",
+}
 
 
 PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -114,15 +143,22 @@ a.tut{{border-color:var(--orange);color:#ffd9c2;}}a.tut:hover{{background:#2f261
 a.rec{{border-style:dashed;color:#bcd;}}
 .lbl{{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:8px 0 4px;}}
 h2.section{{font-size:16px;margin:26px 0 10px;border-bottom:1px solid #2a2d34;padding-bottom:6px;}}
+.frun{{padding:9px 0;border-bottom:1px solid #23262d;}}.frun:last-child{{border-bottom:0;}}
+.tags{{margin-top:7px;font-size:12px;color:var(--mut);}}
+.seg{{display:inline-block;background:#23262d;border:1px solid #343842;border-radius:4px;
+padding:1px 7px;margin:3px 4px 0 0;color:#9fb3c8;font-size:11.5px;}}
+.seg b{{color:var(--fg);font-weight:600;}}
+a.free{{border-color:#3a5b57;color:#a9d6d1;}}a.free:hover{{background:#22302e;}}
 footer{{color:var(--mut);font-size:12px;margin-top:30px;border-top:1px solid #2a2d34;padding-top:12px;}}
 </style></head><body>
 <h1><span class="t">Break</span><span class="o">dance</span> Move Library</h1>
 <div class="sub">{count} moves. Each card links clean reference animations to scrub, plus tutorial breakdowns and reconstructions where we have them. Click any pill to open its study viewer.</div>
 {moves}
 <h2 class="section">Freestyle sequences (multiple moves — scrub to explore)</h2>
-<div class="move"><div class="links">{freestyle}</div></div>
+<div class="move">{freestyle}</div>
 <footer>Reference animations are mocap / Mixamo clean animation (accurate — no single-view leg-extension limit).
-Orange pill = tutorial wiki (opens in Obsidian). Dashed pill = a reconstruction from real video (has the synced source panel for form detail). Generated by <code>move_library.py</code>.</footer>
+Orange pill = tutorial wiki (opens in Obsidian). Dashed pill = a reconstruction from real video (has the synced source panel for form detail).
+Detected-move tags come from <code>vlm_movetag.py</code> (Gemini video analysis of the source clips); timestamps are scrub positions in the linked viewer. Generated by <code>move_library.py</code>.</footer>
 </body></html>"""
 
 
@@ -134,7 +170,65 @@ def pill(label, href, cls="pill"):
     return f'<a class="{cls}" href="{html.escape(href)}">{html.escape(label)}</a>'
 
 
+def load_move_tags(root):
+    """clips mapping from move_tags.json (vlm_movetag.py --merge-into), or {}."""
+    p = root / "move_tags.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("clips", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def viewer_stem(rel):
+    """Library stem for a viewer path — the move_tags.json join key."""
+    stem = Path(rel).stem
+    return stem[:-len("_viewer")] if stem.endswith("_viewer") else stem
+
+
+def fmt_ts(sec):
+    m, s = divmod(int(round(sec)), 60)
+    return f"{m}:{s:02d}"
+
+
+def freestyle_html(root, tags):
+    """Render freestyle runs (+ per-run detected-move segments) and collect
+    per-move-card cross-references: {card: [(run_label, rel, move, spans)]}."""
+    blocks, seen = [], {}
+    for label, rel in FREESTYLE:
+        if not exists(root, rel):
+            continue
+        parts = [f'<div class="frun"><div class="links">{pill(label, rel)}</div>']
+        clip = tags.get(viewer_stem(rel))
+        segs = (clip or {}).get("segments") or []
+        if segs:
+            chips = "".join(
+                f'<span class="seg" title="{html.escape(s.get("notes") or "")}">'
+                f'<b>{html.escape(s["move"])}</b> '
+                f'{fmt_ts(s["start_s"])}–{fmt_ts(s["end_s"])}</span>'
+                for s in segs)
+            cov = clip.get("coverage")
+            meta = "detected moves (" + html.escape(clip.get("model", "VLM"))
+            if cov is not None:
+                meta += f", coverage {cov:.0%}"
+            parts.append(f'<div class="tags">{meta}): {chips}</div>')
+            per_move = {}
+            for s in segs:
+                card = TAG_TO_CARD.get(s["move"])
+                if card:
+                    per_move.setdefault((card, s["move"]), []).append(
+                        (s["start_s"], s["end_s"]))
+            for (card, move), spans in per_move.items():
+                seen.setdefault(card, []).append((label, rel, move, spans))
+        parts.append("</div>")
+        blocks.append("".join(parts))
+    return "\n".join(blocks), seen
+
+
 def build(root, out):
+    tags = load_move_tags(root)
+    free, seen = freestyle_html(root, tags)
     move_html, count = [], 0
     for m in MOVES:
         anims = [(l, r) for l, r in m["anims"] if exists(root, r)]
@@ -155,12 +249,22 @@ def build(root, out):
             parts.append('<div class="lbl">your reconstructions</div><div class="links">')
             parts += [pill(l, r, "pill rec") for l, r in recs]
             parts.append('</div>')
+        refs = seen.get(m["name"], [])
+        if refs:
+            # No ?t= deep-link in the viewer (only the ?shot= QA hook), so
+            # timestamps are label text — open the run and scrub to them.
+            parts.append('<div class="lbl">seen in freestyles</div><div class="links">')
+            for run_label, rel, move, spans in refs:
+                ts = ", ".join(f"{fmt_ts(a)}–{fmt_ts(b)}" for a, b in spans[:4])
+                extra = f" +{len(spans) - 4} more" if len(spans) > 4 else ""
+                parts.append(pill(f"{run_label} · {move} @ {ts}{extra}",
+                                  rel, "pill free"))
+            parts.append('</div>')
         parts.append('</div>')
         move_html.append("".join(parts))
 
-    free = [pill(l, r) for l, r in FREESTYLE if exists(root, r)]
     out.write_text(PAGE.format(count=count, moves="\n".join(move_html),
-                               freestyle="".join(free)), encoding="utf-8")
+                               freestyle=free), encoding="utf-8")
     print(f"[move-library] {count} move cards -> {out}")
     return out
 

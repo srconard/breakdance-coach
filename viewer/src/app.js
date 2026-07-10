@@ -1,8 +1,10 @@
 /* Move-study viewer (quality plan Phase 3+4).
  *
  * Self-contained: the packer (analyzer_3d/src/make_viewer.py) inlines this
- * bundle plus base64 GLB (+ optional source MP4) into one HTML file.
- * Expects window.__VIEWER__ = { title, fps, glbB64, videoB64, videoOffset }.
+ * bundle plus base64 GLB (+ optional source MP4, + optional static scene GLB)
+ * into one HTML file.
+ * Expects window.__VIEWER__ = { title, fps, glbB64, videoB64, videoOffset,
+ *                               sceneB64 }.
  */
 
 import * as THREE from "three";
@@ -59,6 +61,50 @@ const grid = new THREE.GridHelper(14, 28, 0x4a5058, 0x2e3237);
 grid.position.y = 0.001;
 scene.add(grid);
 
+// ------------------------------------------------- environment (scene GLB)
+// Optional STATIC environment — a scanned outdoor space (photogrammetry /
+// gaussian-splat scan exported as a mesh GLB) or a synthetic test set.
+// Scale/origin contract (glTF standard): 1 unit = 1 meter, Y-up, and the
+// scene must be authored so its ground surface sits at y=0 with the dance
+// spot near the origin — the mannequin animates around the origin on the
+// y=0 plane. No animation is played on the environment; it only receives
+// shadows (cheap: receive-only, no casting).
+const sceneRoot = new THREE.Group();
+scene.add(sceneRoot);
+let hasScene = false;
+
+function setSceneVisible(v) {
+  const on = v && hasScene;
+  sceneRoot.visible = on;
+  // The scanned scene supplies its own ground; the synthetic studio floor
+  // and grid come back when the scene is hidden.
+  floor.visible = grid.visible = !on;
+  $("scenebtn").classList.toggle("on", on);
+}
+
+if (DATA.sceneB64) {
+  new GLTFLoader().parse(b64ToBuffer(DATA.sceneB64), "", (gltf) => {
+    const env = gltf.scene;
+    env.traverse((o) => {
+      if (o.isMesh) { o.receiveShadow = true; o.castShadow = false; }
+    });
+    sceneRoot.add(env);
+    hasScene = true;
+    setSceneVisible(true);
+    // Push fog and far plane out so large scans aren't swallowed.
+    const box = new THREE.Box3().setFromObject(env);
+    if (!box.isEmpty()) {
+      const r = box.getSize(new THREE.Vector3()).length() / 2;
+      scene.fog.near = Math.max(scene.fog.near, r * 1.5);
+      scene.fog.far = Math.max(scene.fog.far, r * 4);
+      camera.far = Math.max(camera.far, r * 8);
+      camera.updateProjectionMatrix();
+    }
+  });
+} else {
+  $("scenebtn").style.display = "none";
+}
+
 // ---------------------------------------------------------------- model
 
 const modelRoot = new THREE.Group();
@@ -87,11 +133,50 @@ new GLTFLoader().parse(b64ToBuffer(DATA.glbB64), "", (gltf) => {
   }
   $("scrub").max = duration;
   $("btime").textContent = fmt(duration);
+  computeAnimBounds();
+  fitStage();
   fitCamera("threequarter");
   seek(0);
 });
 
+// Union of the mannequin's bounds sampled across the WHOLE animation, so
+// traveling / inverted clips stay fully in frame (was: first-frame bounds
+// only, which mis-framed clips like Breakdance 1990). Sampled once at load;
+// `precise` vertex sampling handles skinned meshes (bind-pose boxes lie).
+let animBounds = null;
+
+function computeAnimBounds() {
+  if (!mixer || !duration) return;
+  const box = new THREE.Box3();
+  const n = Math.min(120, Math.max(24, Math.ceil(duration * 6))); // ~6 Hz
+  for (let i = 0; i <= n; i++) {
+    const t = (duration * i) / n;
+    for (const a of actions) a.time = t;
+    mixer.update(0);
+    modelRoot.updateMatrixWorld(true);
+    box.union(new THREE.Box3().setFromObject(modelRoot, true));
+  }
+  if (!box.isEmpty()) animBounds = box;
+}
+
+// Widen the studio floor + shadow ortho box for clips that travel beyond
+// the default 7 m stage.
+function fitStage() {
+  if (!animBounds) return;
+  const c = animBounds.getCenter(new THREE.Vector3());
+  const sz = animBounds.getSize(new THREE.Vector3());
+  const rXZ = Math.hypot(sz.x, sz.z) / 2 + Math.hypot(c.x, c.z);
+  const f = Math.max(1, (rXZ + 1.5) / 7);
+  floor.scale.setScalar(f);
+  grid.scale.setScalar(f);
+  const s = Math.max(4, rXZ + 1);
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -s;
+  sun.shadow.camera.right = sun.shadow.camera.top = s;
+  sun.shadow.camera.updateProjectionMatrix();
+}
+
 function motionBounds() {
+  if (animBounds) return animBounds.clone();
   const box = new THREE.Box3().setFromObject(modelRoot);
   if (box.isEmpty()) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1));
   return box;
@@ -110,7 +195,10 @@ function fitCamera(preset) {
   const r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
   const d = PRESETS[preset] || PRESETS.threequarter;
   const dir = new THREE.Vector3(...d).normalize();
-  camera.position.copy(center).addScaledVector(dir, r * 2.6);
+  // r / tan(fov/2), corrected for narrow viewports, small margin.
+  const vFit = r / Math.tan((camera.fov * Math.PI) / 360);
+  const dist = 1.06 * Math.max(vFit, vFit / Math.max(camera.aspect, 0.01));
+  camera.position.copy(center).addScaledVector(dir, dist);
   controls.target.copy(center);
   controls.update();
 }
@@ -224,7 +312,12 @@ $("mirror").onclick = () => {
   modelRoot.scale.x *= -1;
   $("mirror").classList.toggle("on");
   clearTrails();
+  if (animBounds) { // keep camera fit valid after the flip
+    const { min, max } = animBounds;
+    [min.x, max.x] = [-max.x, -min.x];
+  }
 };
+$("scenebtn").onclick = () => setSceneVisible(!sceneRoot.visible);
 $("trails").onclick = () => {
   trailsOn = !trailsOn;
   $("trails").classList.toggle("on");
