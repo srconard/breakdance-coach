@@ -1,0 +1,74 @@
+{
+  "title": "Dance Through the Test Scene - choreo v0",
+  "scene": "output/reference_library/qa/test_scene.glb",
+  "blend_s": 0.4,
+  "start": {
+    "at": [
+      0.0,
+      -4.4
+    ],
+    "heading_deg": 0
+  },
+  "steps": [
+    {
+      "label": "entrance toprock (wall)",
+      "clip": "output/reference_library/aistpp/gBR_sBM_cAll_d04_mBR0_ch01_smpl_clean.pkl",
+      "start_s": 0.0,
+      "end_s": 5.5
+    },
+    {
+      "label": "travel -> low platform",
+      "clip": "output/reference_library/aistpp/gBR_sBM_cAll_d04_mBR0_ch02_smpl_clean.pkl",
+      "start_s": 0.0,
+      "end_s": 5.0,
+      "to": [
+        -0.9,
+        -1.7
+      ],
+      "face_travel": true
+    },
+    {
+      "label": "footwork at platform",
+      "clip": "output/reference_library/aistpp/gBR_sBM_cAll_d04_mBR0_ch09_smpl_clean.pkl",
+      "start_s": 0.0,
+      "end_s": 8.0,
+      "heading_deg": -130
+    },
+    {
+      "label": "travel -> center stage",
+      "clip": "output/reference_library/aistpp/gBR_sBM_cAll_d04_mBR0_ch06_smpl_clean.pkl",
+      "start_s": 0.0,
+      "end_s": 5.0,
+      "to": [
+        0.3,
+        0.3
+      ],
+      "face_travel": true
+    },
+    {
+      "label": "freestyle footwork (center)",
+      "clip": "output/reference_library/aistpp/gBR_sFM_cAll_d04_mBR0_ch01_smpl_clean.pkl",
+      "start_s": 5.9,
+      "end_s": 16.6,
+      "heading_deg": 180
+    },
+    {
+      "label": "travel -> crate",
+      "clip": "output/reference_library/aistpp/gBR_sBM_cAll_d04_mBR0_ch04_smpl_clean.pkl",
+      "start_s": 0.0,
+      "end_s": 4.5,
+      "to": [
+        2.6,
+        -1.7
+      ],
+      "face_travel": true
+    },
+    {
+      "label": "freeze finale (crate)",
+      "clip": "output/reference_library/aistpp/gBR_sFM_cAll_d04_mBR0_ch01_smpl_clean.pkl",
+      "start_s": 36.7,
+      "end_s": 42.6,
+      "heading_deg": -90
+    }
+  ]
+}

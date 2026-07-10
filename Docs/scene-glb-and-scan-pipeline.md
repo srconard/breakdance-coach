@@ -57,3 +57,26 @@ exported as **textured mesh** — the viewer renders meshes, not splats.
 QA reference: `output/reference_library/qa/make_test_scene.py` generates the
 synthetic `test_scene.glb` (16 m slab, crates, walls, ramp) used by
 `scene_demo_viewer.html`.
+
+## Choreographing a dance through a scene (`choreo.py`)
+
+```
+python -m analyzer_3d.src.choreo spec.json [--dry-run] [-o output/choreo/name]
+```
+
+`analyzer_3d/src/choreo.py` chains move segments from library SMPL pkls into
+one dance that tours a scene: rigid yaw+XZ retarget per segment (chain is
+position-continuous), quaternion crossfade at seams, and optional smoothstep
+root drift so a segment *travels* to a target point (library clips dance
+nearly in place — net root motion 0.05–0.9 m). Output goes through the normal
+`mannequin.py` → `make_viewer.py --scene` path. Example spec (station tour of
+the test scene): `analyzer_3d/examples/choreo_scene_dance1.json`.
+
+The JSON spec is the interface for a future sequence-builder UI — a picker
+only needs to emit the spec. Honest v0 limits: kinematic, not physics —
+injected travel slides the feet (keep drift ≤ ~1.0 m/s during stepping moves;
+the composer warns above 1.2), seams are slerp blends not motion-matched
+transitions, and there is no terrain adaptation (choreograph on open ground;
+a MaskedMimic/GPC-class physics controller is the P3 path to terrain-valid
+movement). Use `--dry-run` to iterate on the station table (entry/exit XZ,
+yaw, drift speed) before paying the Blender export.
