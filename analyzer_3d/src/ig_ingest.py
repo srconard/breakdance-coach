@@ -13,6 +13,7 @@ Usage:
     python -m analyzer_3d.src.ig_ingest nas-queue
     python -m analyzer_3d.src.ig_ingest refresh-cookies
     python -m analyzer_3d.src.ig_ingest tag
+    python -m analyzer_3d.src.ig_ingest extract-queue
     python -m analyzer_3d.src.ig_ingest nightly
 
 The file also supports direct script execution:
@@ -102,12 +103,47 @@ PARTNER_STYLE_TERMS = [
     "salsa", "bachata", "zouk", "kizomba", "swing", "lindy", "tango",
     "ballroom", "partner", "acro", "aerial",
 ]
+MONTAGE_MARKERS = [
+    "montage", "edit", "edits", "edited", "music video", "compilation",
+    "promo", "promotional", "trailer", "recap", "mashup", "showreel",
+    "show reel", "highlight reel", "highlights", "many cuts", "fast cuts",
+    "fast-cut", "quick cuts", "multiple clips", "several clips",
+]
+REVIEW_MARKERS = [
+    "battle", "battles", "cypher", "cipher", "versus", "vs", "crowd",
+    "crew", "jam", "multiple dancers", "two dancers", "several dancers",
+    "multiple people",
+]
+FLOOR_PLANE_ONLY_MARKERS = [
+    "parkour", "freerun", "freerunning", "freerunner", "vault", "vaults",
+    "tricking", "rooftop", "obstacle", "obstacles", "street workout",
+]
 TAG_MODEL = "Gemini 3.1 Pro (High)"
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov"}
 ANSI_ESCAPE_RE = re.compile(
     r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
 )
 TAG_JSON_RE = re.compile(r'\{\s*"clips".*\}', re.DOTALL)
+MONTAGE_RE = re.compile(
+    r"(?<!\w)(?:" + "|".join(re.escape(marker) for marker in MONTAGE_MARKERS)
+    + r")(?!\w)",
+    re.IGNORECASE,
+)
+REVIEW_RE = re.compile(
+    r"(?<!\w)(?:" + "|".join(re.escape(marker) for marker in REVIEW_MARKERS)
+    + r")(?!\w)",
+    re.IGNORECASE,
+)
+FLOOR_PLANE_ONLY_RE = re.compile(
+    r"(?<!\w)(?:" + "|".join(
+        re.escape(marker)
+        for marker in FLOOR_PLANE_ONLY_MARKERS
+        if marker != "tricking"
+    ) + r")(?!\w)",
+    re.IGNORECASE,
+)
+TRICKING_RE = re.compile(r"(?<!\w)tricking(?!\w)", re.IGNORECASE)
+BREAKING_RE = re.compile(r"(?<!\w)breaking(?!\w)", re.IGNORECASE)
 
 
 # Instagram's export is regular enough that narrowly anchored regexes are less
@@ -1512,6 +1548,156 @@ def command_tag(args: argparse.Namespace) -> int:
     return 0 if stats["failed_batches"] == 0 else 1
 
 
+# ---------------------------------------------------------------- extract queue
+
+def joined_tag_text(entry: dict[str, Any], fields: tuple[str, ...]) -> str:
+    """Join scalar and list tag fields into one marker-searchable string."""
+    parts = []
+    for field in fields:
+        value = entry.get(field, "")
+        if isinstance(value, list):
+            parts.extend(str(item) for item in value)
+        else:
+            parts.append(str(value or ""))
+    return " ".join(parts)
+
+
+def extraction_clip_filename(value: Any, shortcode: str) -> str:
+    """Return a flat clip filename, accepting Windows or POSIX metadata paths."""
+    if not value:
+        return f"{shortcode}.mp4"
+    name = re.split(r"[\\/]", str(value).rstrip("\\/"))[-1]
+    return name or f"{shortcode}.mp4"
+
+
+def needs_floor_plane_only(entry: dict[str, Any]) -> bool:
+    """Flag clips whose movement is better extracted against a floor plane."""
+    moves = entry.get("moves", [])
+    if not isinstance(moves, list):
+        moves = []
+    if any(
+        str(move).lower().startswith(
+            ("other:parkour", "other:tricking", "other:freerun")
+        )
+        for move in moves
+    ):
+        return True
+
+    text = joined_tag_text(entry, ("style", "description", "moves"))
+    if FLOOR_PLANE_ONLY_RE.search(text):
+        return True
+    style = str(entry.get("style", "") or "")
+    return bool(TRICKING_RE.search(style) and not BREAKING_RE.search(style))
+
+
+def extraction_queue_sort_key(entry: dict[str, Any]) -> tuple[Any, ...]:
+    """Order clean solo, floor-plane, then review clips deterministically."""
+    review = bool(entry.get("review"))
+    floor_plane_only = bool(entry.get("floor_plane_only"))
+    group = 2 if review else 1 if floor_plane_only else 0
+    duration = entry.get("duration_s")
+    return (
+        group,
+        duration is None,
+        duration if duration is not None else 0,
+        str(entry.get("shortcode", "")),
+    )
+
+
+def command_extract_queue(args: argparse.Namespace) -> int:
+    """Build the policy-filtered queue for nightly NAS 3D extraction."""
+    tags_path = args.out_dir / "tags.json"
+    tags = read_json(tags_path)
+    if not isinstance(tags, dict) or not isinstance(tags.get("clips"), list):
+        raise ValueError(f"tags file must contain a clips list: {tags_path}")
+
+    tag_entries = tags["clips"]
+    candidates = [
+        entry for entry in tag_entries
+        if isinstance(entry, dict) and entry.get("library_worthiness") == "yes"
+    ]
+    clips = []
+    excluded = []
+    for entry in candidates:
+        shortcode = str(entry.get("shortcode", ""))
+        if entry.get("partner_or_lift"):
+            excluded.append({
+                "shortcode": shortcode,
+                "reason": "partner_or_lift",
+                "style": entry.get("style"),
+                "description": entry.get("description"),
+            })
+            continue
+
+        montage_text = joined_tag_text(
+            entry,
+            ("style", "description", "worthiness_reason", "moves"),
+        )
+        if MONTAGE_RE.search(montage_text):
+            excluded.append({
+                "shortcode": shortcode,
+                "reason": "montage",
+                "style": entry.get("style"),
+                "description": entry.get("description"),
+            })
+            continue
+
+        review_text = joined_tag_text(entry, ("style", "description"))
+        clips.append({
+            "shortcode": shortcode,
+            "clip": extraction_clip_filename(entry.get("clip"), shortcode),
+            "duration_s": entry.get("duration_s"),
+            "moves": entry.get("moves"),
+            "style": entry.get("style"),
+            "description": entry.get("description"),
+            "review": bool(REVIEW_RE.search(review_text)),
+            "floor_plane_only": needs_floor_plane_only(entry),
+        })
+
+    clips.sort(key=extraction_queue_sort_key)
+    counts = {
+        "tags_total": len(tag_entries),
+        "yes_total": len(candidates),
+        "auto": len(clips),
+        "excluded_partner_or_lift": sum(
+            entry["reason"] == "partner_or_lift" for entry in excluded
+        ),
+        "excluded_montage": sum(
+            entry["reason"] == "montage" for entry in excluded
+        ),
+        "review": sum(entry["review"] for entry in clips),
+        "floor_plane_only": sum(entry["floor_plane_only"] for entry in clips),
+    }
+    queue = {
+        "_comment": (
+            "Policy-filtered Instagram clip queue for nightly NAS GVHMR "
+            "3D extraction."
+        ),
+        "generated_at": utc_now_iso(),
+        "policy": {
+            "candidate_tier": "library_worthiness=yes",
+            "exclude": ["partner_or_lift", "montage"],
+            "montage_markers": MONTAGE_MARKERS,
+            "review_markers": REVIEW_MARKERS,
+            "floor_plane_only_markers": FLOOR_PLANE_ONLY_MARKERS,
+        },
+        "counts": counts,
+        "clips": clips,
+        "excluded": excluded,
+    }
+    queue_path = args.out_dir / "extract_queue.json"
+    write_json(queue_path, queue)
+    print(
+        f"[ig] wrote {queue_path}: tags_total={counts['tags_total']}, "
+        f"yes_total={counts['yes_total']}, auto={counts['auto']}; "
+        f"excluded partner_or_lift="
+        f"{counts['excluded_partner_or_lift']}, montage="
+        f"{counts['excluded_montage']}; review={counts['review']}, "
+        f"floor_plane_only={counts['floor_plane_only']}"
+    )
+    return 0
+
+
 # ---------------------------------------------------------------- nightly
 
 def load_tags_summary(out_dir: Path) -> dict[str, Any]:
@@ -1779,6 +1965,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   python analyzer_3d/src/ig_ingest.py nas-queue
   python analyzer_3d/src/ig_ingest.py refresh-cookies
   python analyzer_3d/src/ig_ingest.py tag --batch-size 12
+  python analyzer_3d/src/ig_ingest.py extract-queue
   python analyzer_3d/src/ig_ingest.py nightly --limit 45
 """,
     )
@@ -1870,6 +2057,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="tag every queued clip even when it already exists in tags.json",
     )
     tag_parser.set_defaults(func=command_tag)
+
+    extract_queue_parser = subparsers.add_parser(
+        "extract-queue", help="build policy-filtered extract_queue.json",
+    )
+    add_common_arguments(extract_queue_parser)
+    extract_queue_parser.set_defaults(func=command_extract_queue)
 
     nightly_parser = subparsers.add_parser(
         "nightly", help="run the resilient scheduled ingest pipeline",
