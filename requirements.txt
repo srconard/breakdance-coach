@@ -1,5 +1,6 @@
 yt-dlp
 google-generativeai
+google-genai
 anthropic
 openai
 ffmpeg-python

@@ -1,14 +1,15 @@
 # AGENTS.md - Project Context for AI Agents
 
-Last updated: 2026-03-06
+Last updated: 2026-08-04
 
 ## What This Project Is
 
-Breakdance Coach is a monorepo with three tools:
+Breakdance Coach is a monorepo with four tools:
 
 1. Tutorial Wiki Generator (`tutorial_generator/`): converts videos into step-by-step Obsidian tutorials with embedded GIF/MP4/WebM clips.
 2. 3D Move Analyzer (`analyzer_3d/`): generates animated 3D models from dance videos (GVHMR -> SMPL -> GLB -> Obsidian).
 3. Shared Utilities (`shared/`): downloader, frame interpolation, cloud GPU helpers.
+4. Dance Mirror (`dance_mirror/`): turns short social or local dance clips into self-contained practice lessons.
 
 ## Current Status
 
@@ -16,6 +17,7 @@ Breakdance Coach is a monorepo with three tools:
 - Re-clip flow: working (metadata-driven HQ re-extraction).
 - Frame interpolation: FFmpeg local fallback + RIFE on Modal.
 - 3D analyzer: pipeline implemented end-to-end; Obsidian playback/embedding UX still being refined.
+- Dance Mirror: first offline-capable video lesson slice implemented; Gemini and URL paths await connected smoke tests.
 
 GitHub: https://github.com/srconard/breakdance-coach
 
@@ -27,6 +29,7 @@ GitHub: https://github.com/srconard/breakdance-coach
 | `AGENTS/CONTEXT.md` | Technical architecture and implementation notes |
 | `AGENTS/frame-interpolation-options.md` | Interpolation research and backend comparison |
 | `AGENTS/session-log-2026-02-24.md` | Latest detailed session log |
+| `AGENTS/session-log-2026-08-04-dance-mirror.md` | Dance Mirror slice 1 implementation and validation |
 | `AGENTS/session-log-2026-02-23.md` | YouTube fix and interpolation history |
 | `AGENTS/session-log-2026-01-23.md` | Pipeline test and fix history |
 | `AGENTS/session-log-2026-01-22.md` | Initial implementation log |
@@ -86,6 +89,8 @@ python -m modal setup
 | `tutorial_generator/config.py` | Config and provider settings | No |
 | `analyzer_3d/src/` | 3D analysis and export pipeline | No |
 | `analyzer_3d/templates/` | 3D markdown template(s) | No |
+| `dance_mirror/src/` | Dance lesson CLI, segmentation, schema, and rendering | No |
+| `dance_mirror/templates/` | Self-contained practice page template | No |
 | `shared/` | Shared downloader/interpolation utilities | No |
 | `output/` (runtime) | Generated tutorials and media artifacts | Yes |
 | temp/intermediate files (runtime) | Preprocessed/transient media | Yes |
@@ -239,6 +244,11 @@ Recommended ignores (verify in `.gitignore`):
 | `analyzer_3d/src/exporter.py` | SMPL to GLB export path |
 | `analyzer_3d/src/blender_scripts/smpl_to_glb.py` | Blender conversion script |
 | `analyzer_3d/src/output.py` | 3D markdown output generation |
+| `dance_mirror/src/main.py` | Dance Mirror build/refresh CLI entrypoint |
+| `dance_mirror/src/segmenter.py` | Gemini part segmentation and uniform offline fallback |
+| `dance_mirror/src/lesson.py` | Editable `dance_lesson.json` validation and persistence |
+| `dance_mirror/src/render.py` | Self-contained lesson HTML renderer |
+| `dance_mirror/templates/lesson.html` | Mobile-first offline practice UI |
 
 ## Quick Resume Checklist
 
