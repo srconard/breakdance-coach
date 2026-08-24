@@ -41,6 +41,39 @@ exported as **textured mesh** — the viewer renders meshes, not splats.
   `obj2gltf`. WebODM outputs are **Z-up** — glTF export from Blender handles the
   Y-up conversion automatically. With GPS/GCPs the scale is metric already.
 
+### Automated preparation
+
+For a local mesh, the repeatable path is:
+
+```bash
+python -m analyzer_3d.src.prepare_scene scan.ply \
+  -o output/scenes/scan.glb --target-triangles 200000
+```
+
+The command locates Blender, imports the scene, gives untextured PLY scans a
+material driven by their vertex-color layer, and auto-levels sheet-like
+environment scans with PCA. It then looks near the bounds center for a
+coherent low-slope patch large enough to support both feet, moves that patch
+to the origin, decimates to the viewer budget, removes giant reconstruction
+hole-fill faces, exports GLB, then
+re-imports the GLB and writes `scan.scene-report.json`. Use `--origin-x`,
+`--origin-y`, and `--ground-z` after the first visual pass when a specific
+dance spot should sit at the origin instead of the scan's bounds center.
+
+The default walkable-anchor search rejects the earlier failure mode where a
+single percentile or flat triangle put the dancer under debris or beside a
+steep bank. Tune it with `--walkable-search-radius`,
+`--walkable-max-slope`, and `--walkable-min-area`; use `--center-mode bounds`
+to recover the simpler geometric-centering behavior.
+`--max-face-area` controls post-decimation removal of implausibly large faces.
+The defaults require 1.2 m² of coherent support and allow up to 5 cm of
+ground-height variance after decimation, reflecting the noise in real scans.
+
+Photogrammetry PLYs can carry per-face UV coordinates that Blender's PLY
+importer does not preserve. If the source also has vertex colors, the automated
+path intentionally uses those for a dependable first viewer artifact. Use the
+manual Blender path below when the external high-resolution texture matters.
+
 ## Cleanup checklist (Blender, 5 minutes)
 
 1. Import mesh; set origin: move the dance-spot ground point to world origin,

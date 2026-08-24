@@ -100,6 +100,7 @@ if (DATA.sceneB64) {
       camera.far = Math.max(camera.far, r * 8);
       camera.updateProjectionMatrix();
     }
+    fitSceneAwareCamera();
   });
 } else {
   $("scenebtn").style.display = "none";
@@ -135,7 +136,8 @@ new GLTFLoader().parse(b64ToBuffer(DATA.glbB64), "", (gltf) => {
   $("btime").textContent = fmt(duration);
   computeAnimBounds();
   fitStage();
-  fitCamera("threequarter");
+  if (hasScene) fitSceneAwareCamera();
+  else fitCamera("threequarter");
   seek(0);
 });
 
@@ -199,6 +201,39 @@ function fitCamera(preset) {
   const vFit = r / Math.tan((camera.fov * Math.PI) / 360);
   const dist = 1.06 * Math.max(vFit, vFit / Math.max(camera.aspect, 0.01));
   camera.position.copy(center).addScaledVector(dir, dist);
+  controls.target.copy(center);
+  controls.update();
+}
+
+function fitSceneAwareCamera() {
+  if (!hasScene || !animBounds) return;
+  sceneRoot.updateMatrixWorld(true);
+  const box = motionBounds();
+  const center = box.getCenter(new THREE.Vector3());
+  const r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
+  const vFit = r / Math.tan((camera.fov * Math.PI) / 360);
+  const dist = 1.06 * Math.max(vFit, vFit / Math.max(camera.aspect, 0.01));
+  const candidates = [
+    [0.75, 0.65, 0.75], [-0.75, 0.65, 0.75],
+    [0.75, 0.65, -0.75], [-0.75, 0.65, -0.75],
+    [0, 0.8, 1], [1, 0.8, 0], [0, 0.8, -1], [-1, 0.8, 0],
+  ];
+  const raycaster = new THREE.Raycaster();
+  let best = null;
+  for (const values of candidates) {
+    const dir = new THREE.Vector3(...values).normalize();
+    const eye = center.clone().addScaledVector(dir, dist);
+    const towardTarget = center.clone().sub(eye).normalize();
+    raycaster.set(eye, towardTarget);
+    raycaster.near = 0.05;
+    raycaster.far = Math.max(0.1, dist - Math.max(0.3, r * 0.25));
+    const hit = raycaster.intersectObject(sceneRoot, true)[0];
+    const clearance = hit ? hit.distance : Infinity;
+    if (!best || clearance > best.clearance) best = { eye, clearance };
+    if (!hit) break;
+  }
+  if (!best) return fitCamera("threequarter");
+  camera.position.copy(best.eye);
   controls.target.copy(center);
   controls.update();
 }
