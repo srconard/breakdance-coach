@@ -12,6 +12,9 @@ from tutorial_generator.config import get_api_key
 
 
 DEFAULT_MODEL = "gemini-2.5-flash"
+# A segmentation whose parts span less than this fraction of the clip is treated
+# as mis-scaled model timestamps (seen live 2026-09-01: 0.00-0.15 s for a 16 s clip).
+MIN_COVERAGE_FRACTION = 0.25
 
 
 def segment_video(
@@ -38,11 +41,22 @@ def segment_video(
         return uniform_parts(duration_s, fallback_parts)
 
     try:
-        raw_parts = analyze_with_gemini(Path(video_path), api_key, model_name)
+        raw_parts = analyze_with_gemini(
+            Path(video_path), api_key, model_name, duration_s=duration_s
+        )
         repaired = repair_parts(raw_parts, duration_s)
         if len(repaired) < 3:
             warnings.warn(
                 "Gemini returned fewer than 3 usable parts; using a uniform split.",
+                stacklevel=2,
+            )
+            return uniform_parts(duration_s, fallback_parts)
+        coverage = repaired[-1]["end_s"] - repaired[0]["start_s"]
+        if coverage < MIN_COVERAGE_FRACTION * duration_s:
+            warnings.warn(
+                f"Gemini parts cover only {coverage:.2f}s of a {duration_s:.2f}s clip "
+                "(timestamps look mis-scaled); using a uniform split. Hand-edit "
+                "dance_lesson.json and run refresh to set real boundaries.",
                 stacklevel=2,
             )
             return uniform_parts(duration_s, fallback_parts)
@@ -82,6 +96,7 @@ def analyze_with_gemini(
     video_path: Path,
     api_key: str,
     model_name: str = DEFAULT_MODEL,
+    duration_s: float | None = None,
 ) -> list[dict[str, Any]]:
     """Upload a clip to Gemini and request a bare array of dance parts."""
     from google import genai
@@ -104,10 +119,16 @@ def analyze_with_gemini(
         if "FAILED" in str(uploaded.state).upper():
             raise RuntimeError("Gemini video processing failed.")
 
-        prompt = """Analyze this short dance video as practice material. Return 3 to 8 PARTS that cover the whole danced section. Parts are larger learnable phrases, not individual tutorial steps.
+        duration_line = (
+            f"The video is {duration_s:.1f} seconds long. Timestamps are decimal SECONDS "
+            f"from the start (not mm:ss) and must lie between 0 and {duration_s:.1f}.\n\n"
+            if duration_s
+            else ""
+        )
+        prompt = f"""Analyze this short dance video as practice material. Return 3 to 8 PARTS that cover the whole danced section. Parts are larger learnable phrases, not individual tutorial steps.
 
-For each part return exactly:
-{"start_s": float, "end_s": float, "title": "2-4 words", "cue": "one plain-language sentence"}
+{duration_line}For each part return exactly:
+{{"start_s": float, "end_s": float, "title": "2-4 words", "cue": "one plain-language sentence"}}
 
 Rules:
 - Parts must be in chronological order, contiguous, and non-overlapping.
