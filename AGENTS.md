@@ -244,6 +244,7 @@ Recommended ignores (verify in `.gitignore`):
 | `analyzer_3d/src/exporter.py` | SMPL to GLB export path |
 | `analyzer_3d/src/blender_scripts/smpl_to_glb.py` | Blender conversion script |
 | `analyzer_3d/src/output.py` | 3D markdown output generation |
+| `analyzer_3d/src/phase_trace.py` | CPU phase trace over cleaned SMPL pkls (heights, rotation cycles, inferred support) -> `<stem>_phases.json` |
 | `dance_mirror/src/main.py` | Dance Mirror build/refresh CLI entrypoint |
 | `dance_mirror/src/segmenter.py` | Gemini part segmentation and uniform offline fallback |
 | `dance_mirror/src/lesson.py` | Editable `dance_lesson.json` validation and persistence |
