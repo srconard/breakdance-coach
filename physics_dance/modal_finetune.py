@@ -20,8 +20,10 @@ EXP = "data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/experiment_
 
 image = (
     modal.Image.debian_slim(python_version="3.10")
-    .apt_install("git", "git-lfs", "ffmpeg", "libosmesa6", "libgl1", "libglu1-mesa",
-                 "libglib2.0-0", "build-essential")
+    .apt_install("git", "git-lfs", "ffmpeg", "libosmesa6", "libosmesa6-dev", "libgl1",
+                 "libgl1-mesa-dev", "libglu1-mesa-dev", "libglib2.0-0", "build-essential",
+                 "cmake", "libx11-dev", "libxrandr-dev", "libxinerama-dev", "libxcursor-dev",
+                 "libxi-dev", "xvfb", "patchelf")
     .pip_install("torch==2.6.0", index_url="https://download.pytorch.org/whl/cu124")
     .pip_install("newton[examples]==1.0.0")
     .run_commands(
