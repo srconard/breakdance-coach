@@ -11,7 +11,26 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-const DATA = window.__VIEWER__;
+// Two ways in: the packer inlines base64 (one offline HTML file), or the
+// move library's shared page passes URLs in the query string so a phone
+// streams the GLB and video instead of decoding a 5-10 MB HTML file
+// (viewer/library.html?glb=..&video=..&fps=..&title=..&offset=..; 2026-11-17).
+function dataFromQuery() {
+  const q = new URLSearchParams(location.search);
+  return {
+    title: q.get("title") || "Move study",
+    fps: parseFloat(q.get("fps") || "30"),
+    videoOffset: parseFloat(q.get("offset") || "0"),
+    glbUrl: q.get("glb") || "",
+    videoUrl: q.get("video") || "",
+    sceneUrl: q.get("scene") || "",
+    startT: parseFloat(q.get("t") || "0") || 0,
+    loop: (q.get("loop") || "").split(",").map(parseFloat).filter((x) => isFinite(x)),
+  };
+}
+const DATA = window.__VIEWER__ || dataFromQuery();
+if (DATA.title && !window.__VIEWER__) document.title = DATA.title + " — Move Study";
+const HAS_VIDEO = !!(DATA.videoB64 || DATA.videoUrl);
 
 // ---------------------------------------------------------------- helpers
 
@@ -20,6 +39,20 @@ function b64ToBuffer(b64) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes.buffer;
+}
+
+function loadBuffer(b64, url) {
+  if (b64) return Promise.resolve(b64ToBuffer(b64));
+  return fetch(url).then((r) => {
+    if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+    return r.arrayBuffer();
+  });
+}
+
+function showError(msg) {
+  const el = document.getElementById("loaderr");
+  if (el) { el.textContent = msg; el.style.display = "block"; }
+  console.error(msg);
 }
 
 const $ = (id) => document.getElementById(id);
@@ -82,8 +115,8 @@ function setSceneVisible(v) {
   $("scenebtn").classList.toggle("on", on);
 }
 
-if (DATA.sceneB64) {
-  new GLTFLoader().parse(b64ToBuffer(DATA.sceneB64), "", (gltf) => {
+if (DATA.sceneB64 || DATA.sceneUrl) {
+  loadBuffer(DATA.sceneB64, DATA.sceneUrl).then((buf) => new GLTFLoader().parse(buf, "", (gltf) => {
     const env = gltf.scene;
     env.traverse((o) => {
       if (o.isMesh) { o.receiveShadow = true; o.castShadow = false; }
@@ -101,7 +134,7 @@ if (DATA.sceneB64) {
       camera.updateProjectionMatrix();
     }
     fitSceneAwareCamera();
-  });
+  })).catch((e) => showError("scene: " + e.message));
 } else {
   $("scenebtn").style.display = "none";
 }
@@ -114,7 +147,7 @@ scene.add(modelRoot);
 let mixer, actions = [], duration = 0;
 let trackables = {};    // name -> Object3D (wrists/ankles for trails)
 
-new GLTFLoader().parse(b64ToBuffer(DATA.glbB64), "", (gltf) => {
+loadBuffer(DATA.glbB64, DATA.glbUrl).then((buf) => new GLTFLoader().parse(buf, "", (gltf) => {
   const model = gltf.scene;
   model.traverse((o) => {
     if (o.isMesh) {
@@ -138,8 +171,13 @@ new GLTFLoader().parse(b64ToBuffer(DATA.glbB64), "", (gltf) => {
   fitStage();
   if (hasScene) fitSceneAwareCamera();
   else fitCamera("threequarter");
-  seek(0);
-});
+  // ?t=SECONDS starts there; ?loop=A,B loops a segment (library deep links)
+  if (DATA.loop && DATA.loop.length === 2 && DATA.loop[1] > DATA.loop[0]) {
+    loopA = DATA.loop[0]; loopB = DATA.loop[1];
+    $("abstate").textContent = `A=${fmt(loopA)} B=${fmt(loopB)}`;
+  }
+  seek(DATA.startT || (loopA ?? 0));
+})).catch((e) => showError("model: " + e.message));
 
 // Union of the mannequin's bounds sampled across the WHOLE animation, so
 // traveling / inverted clips stay fully in frame (was: first-frame bounds
@@ -289,13 +327,23 @@ if (DATA.videoB64) {
   const blob = new Blob([b64ToBuffer(DATA.videoB64)], { type: "video/mp4" });
   video.src = URL.createObjectURL(blob);
   video.muted = true;
+} else if (DATA.videoUrl) {
+  // Fetch the whole clip into a blob first: the viewer seeks the video every
+  // time the model clock drifts, and a server without HTTP Range support (the
+  // NAS bridge's /webapps/ route) leaves a streamed <video> stuck at
+  // readyState 1 under constant seeks. A local blob seeks instantly and also
+  // satisfies iPhone Safari, which refuses non-Range video. Clips are ~5 MB.
+  video.muted = true;
+  loadBuffer("", DATA.videoUrl)
+    .then((buf) => { video.src = URL.createObjectURL(new Blob([buf], { type: "video/mp4" })); syncVideo(true); })
+    .catch((e) => showError("video: " + e.message));
 } else {
   videoPanel.style.display = "none";
   $("togglevideo").style.display = "none";
 }
 
 function syncVideo(hard) {
-  if (!DATA.videoB64 || videoPanel.style.display === "none") return;
+  if (!HAS_VIDEO || videoPanel.style.display === "none") return;
   const target = time + (DATA.videoOffset || 0);
   if (hard || Math.abs(video.currentTime - target) > 0.12) video.currentTime = target;
   video.playbackRate = Math.max(speed, 0.0625);

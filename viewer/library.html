@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Move Study</title>
+<link rel="icon" href="data:,">
+<!-- Shared, phone-first move-study page for the move library (2026-11-17).
+     Same app.js as the self-contained viewer, but the GLB and source video
+     stream by URL: library.html?glb=..&video=..&fps=..&title=..&offset=..
+     Built into the library by analyzer_3d/src/move_library_site.py. -->
+<style>
+  :root { --teal: #19b3a6; --orange: #ea6b2e; --bg: #101114; --panel: #1b1d22; --fg: #d7dae0; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, "Segoe UI", sans-serif; overflow: hidden; }
+  #app { display: flex; flex-direction: column; height: 100%; height: 100dvh; }
+  header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 14px; font-weight: 600; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header a.back { color: var(--teal); text-decoration: none; font-size: 18px; padding: 2px 6px; }
+  .legend { display: flex; gap: 8px; font-size: 11px; color: #9aa0a8; }
+  .chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 3px; vertical-align: -1px; }
+  #main { flex: 1; display: flex; min-height: 0; }
+  #scene { flex: 1; min-width: 0; min-height: 0; position: relative; }
+  #scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #videopanel { width: 36%; min-width: 220px; background: #000; display: flex; align-items: center; justify-content: center; }
+  #videopanel video { width: 100%; max-height: 100%; }
+  footer { background: var(--panel); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 7px; }
+  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  button { background: #2a2d34; color: var(--fg); border: 1px solid #3a3e46; border-radius: 8px;
+    padding: 7px 10px; cursor: pointer; font-size: 13px; min-height: 36px; }
+  button.on { background: var(--teal); color: #08221f; border-color: var(--teal); }
+  #play { width: 52px; font-size: 16px; }
+  input[type=range] { flex: 1; accent-color: var(--teal); min-width: 80px; height: 28px; }
+  #speed { flex: 0 0 110px; }
+  .time { font-variant-numeric: tabular-nums; color: #9aa0a8; min-width: 48px; font-size: 12px; }
+  .grp { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .lbl { color: #7b818a; font-size: 11px; margin-right: 2px; }
+  #abstate { color: var(--orange); font-size: 11px; }
+  #loaderr { display: none; position: absolute; top: 10px; left: 10px; right: 10px; background: #3a1414;
+    color: #ffb4a8; padding: 10px; border-radius: 8px; z-index: 3; }
+  @media (max-aspect-ratio: 1/1) {
+    #main { flex-direction: column; }
+    #videopanel { width: 100%; min-width: 0; height: 34%; }
+    #videopanel video { height: 100%; width: auto; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <a class="back" href="./" title="Back to the move library">‹</a>
+    <h1 id="ttl">Move study</h1>
+    <div class="legend">
+      <span><span class="chip" style="background:var(--teal)"></span>L</span>
+      <span><span class="chip" style="background:var(--orange)"></span>R</span>
+    </div>
+    <div class="grp">
+      <button id="cam_front">Front</button>
+      <button id="cam_side">Side</button>
+      <button id="cam_top">Top</button>
+      <button id="cam_threequarter">¾</button>
+    </div>
+    <button id="mirror" title="Flip left-right, as if facing a mirror">Mirror</button>
+    <button id="trails" title="Wrist/ankle motion trails">Trails</button>
+    <button id="scenebtn" title="Show/hide environment scene">Scene</button>
+    <button id="togglevideo">Video</button>
+  </header>
+  <div id="main">
+    <div id="scene"><div id="loaderr"></div></div>
+    <div id="videopanel"><video id="vid" playsinline muted></video></div>
+  </div>
+  <footer>
+    <div class="row">
+      <button id="play">❚❚</button>
+      <button id="fback" title="one frame back">⏮</button>
+      <button id="ffwd" title="one frame forward">⏭</button>
+      <span class="time" id="atime">0.00s</span>
+      <input type="range" id="scrub" min="0" max="14" step="0.0333" value="0">
+      <span class="time" id="btime">—</span>
+    </div>
+    <div class="row">
+      <span class="lbl">speed</span>
+      <input type="range" id="speed" min="0.1" max="1" step="0.05" value="1">
+      <span class="time" id="speedval">1.00×</span>
+      <div class="grp">
+        <button id="sp01">0.1×</button><button id="sp025">¼</button>
+        <button id="sp05">½</button><button id="sp1">1×</button>
+      </div>
+      <div class="grp">
+        <span class="lbl">loop</span>
+        <button id="seta">A</button><button id="setb">B</button>
+        <button id="clearab">Clear</button><span id="abstate"></span>
+      </div>
+      <span class="lbl hint">drag = orbit · pinch = zoom</span>
+    </div>
+  </footer>
+</div>
+<script>
+  // Title before the bundle runs; frame-step buttons reuse the viewer's
+  // arrow-key handler (phones have no keyboard).
+  (function () {
+    var q = new URLSearchParams(location.search);
+    document.getElementById("ttl").textContent = q.get("title") || "Move study";
+    var back = q.get("back");
+    if (back && /^[A-Za-z0-9_./#-]+$/.test(back)) document.querySelector("a.back").href = back;
+    function key(code) { window.dispatchEvent(new KeyboardEvent("keydown", { code: code })); }
+    document.getElementById("fback").onclick = function () { key("ArrowLeft"); };
+    document.getElementById("ffwd").onclick = function () { key("ArrowRight"); };
+  })();
+</script>
+<script src="app.bundle.js"></script>
+</body>
+</html>

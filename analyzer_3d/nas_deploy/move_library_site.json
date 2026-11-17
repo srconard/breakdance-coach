@@ -1,0 +1,106 @@
+{
+  "_comment": "Paths for analyzer_3d/src/move_library_site.py on the NAS (2026-11-17). library-assets/ holds what the PC made: audit/ (library_audit.py + library_vision_judge.py output: <id>_mannequin.glb, <id>_audit.jpg/.json, <id>_vision.json), viewer/ (library.html + the esbuild app.bundle.js), the motion-capture GLBs, tutorial step clips, Dance Mirror lessons, tags.json (the PC's merged 723-clip tag file) and ig_pc/ (the 20 clips only the PC had). Rebuild: cd <breakdance-coach clone> && python3 -m analyzer_3d.src.move_library_site --config analyzer_3d/nas_deploy/move_library_site.json",
+  "out": "/volume1/docker/AI-Agent-Home/webapps/move-library",
+  "assets": "/volume1/docker/AI-Agent-Home/ig-extract/library-assets",
+  "tags": "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/tags.json",
+  "ig_queue": "/volume1/docker/AI-Agent-Home/ig-ingest/nas_queue.json",
+  "results": "/volume1/docker/AI-Agent-Home/ig-extract/results",
+  "audit": "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/audit",
+  "clip_dirs": [
+    "/volume1/docker/AI-Agent-Home/ig-ingest/clips",
+    "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/ig_pc/clips"
+  ],
+  "sheet_dirs": [
+    "/volume1/docker/AI-Agent-Home/ig-ingest/sheets",
+    "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/ig_pc/sheets"
+  ],
+  "viewer_html": "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/viewer/library.html",
+  "viewer_bundle": "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/viewer/app.bundle.js",
+  "tutorials": [
+    {
+      "title": "Flare tutorial by Sambo",
+      "md": "flare_tutorial_mp4/Flare_Tutorial_by_Sambo.md",
+      "moves": [
+        "flare"
+      ],
+      "source": "YouTube: BEST FLARE TUTORIAL (2020) by SAMBO, cut into steps by the Tutorial Wiki Generator"
+    },
+    {
+      "title": "FLARE workout exercises",
+      "md": "FLARE_Workout_Exercises/FLARE_Workout_Exercises.md",
+      "meta": "FLARE_Workout_Exercises/tutorial_metadata.json",
+      "moves": [
+        "flare-conditioning",
+        "flare"
+      ],
+      "source": "YouTube: FLARE Workout Exercises (Intermediate/Advanced), cut into steps by the Tutorial Wiki Generator"
+    }
+  ],
+  "lessons": [
+    {
+      "title": "Sambo's flare in 7 parts",
+      "file": "dance_mirror/flare-sambo-v1/lesson.html",
+      "moves": [
+        "flare"
+      ],
+      "note": "2026-09-01, 7 MB page"
+    },
+    {
+      "title": "Tutting demo (@mandijuana_)",
+      "file": "dance_mirror/tutting-demo/lesson.html",
+      "moves": [
+        "hip-hop"
+      ],
+      "note": "2026-08-04, 5 MB page"
+    }
+  ],
+  "tutorial_recon": [
+    {
+      "label": "Flare: clean 1080p60 tutorial demo",
+      "glb": "3d/flare60/flare60_demo_refined_mannequin.glb",
+      "video": "3d/flare60/flare60_demo.mp4",
+      "fps": 59.94,
+      "moves": [
+        "flare"
+      ],
+      "grade": "usable",
+      "reason": "Hands and feet on the floor (contact refinement works); the swinging leg is 30-40 deg too low and the straddle too narrow (leg under-extension)."
+    },
+    {
+      "label": "Flare: SAMBO demo",
+      "glb": "3d/phase1/flare_sambo_mannequin.glb",
+      "video": "3d/phase1/flare_demo30.mp4",
+      "fps": 29.97,
+      "moves": [
+        "flare"
+      ],
+      "grade": "usable",
+      "reason": "Grounded and stable through four rotations; leg height and straddle under-extended, getting worse in later rotations."
+    },
+    {
+      "label": "V-sit circles (FLARE workout step 11)",
+      "glb": "3d/vsit_auto/vsit_orig30_refined_clean.glb",
+      "video": "3d/phase1/vsit_orig30.mp4",
+      "fps": 30,
+      "moves": [
+        "flare-conditioning"
+      ],
+      "grade": "usable",
+      "reason": "Seated contact correct; the straddle is narrower and the legs lower than the real V-sit (leg under-extension)."
+    }
+  ],
+  "weak": [
+    "The 3D floats. In 37 of 52 extractions the body hangs above the floor for seconds while the dancer is on hands, back or head: support hands, shoulders and heads never touch the floor in 3D. This is the main failure and it hits exactly the moves you train (flares, freezes, floorwork, headspins).",
+    "Legs hidden behind the body come out wrong (kneeling becomes a squat, deep squats distort).",
+    "Nothing is clean on a power move. The only clean ones are standing popping and V-ups; the best flare 3D is the July tutorial reconstruction (usable: grounded, legs too low).",
+    "11 of the 63 chosen clips never made it to 3D: all three footwork clips and five mobility clips (no person found), three crashed on a one-frame mismatch.",
+    "Coverage: 231 partner/lift clips cannot go to 3D at all yet (one-person model), and 346 'maybe' clips were never tried.",
+    "The source videos stream without seeking support on this server (fine on Android Chrome once loaded; iPhone Safari may refuse)."
+  ],
+  "grade_overrides": {
+    "DCq7mA3ohDX": {
+      "grade": "usable",
+      "reason": "Human look 2026-11-17: the macaco's handstand and kip read right; one landing frame floats 11 cm and the legs tangle mid-turn. Vision pass said broken."
+    }
+  }
+}
