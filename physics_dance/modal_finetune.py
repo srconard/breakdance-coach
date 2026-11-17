@@ -10,7 +10,7 @@ returns the training log tail. Evaluate in MuJoCo afterwards with
     modal run physics_dance/modal_soma_track.py --name sixstep_fw1@ft \
         --checkpoint /vol/sixstep_fw1/ft/<run>/last.ckpt
 Hard wall-clock cap = --minutes (the subprocess is killed), so the spend is
-bounded: an L4 is ~$0.80/h.
+bounded: a T4 is ~$0.59/h (L4+ need a payment method on the workspace).
 """
 import modal
 
@@ -38,7 +38,7 @@ app = modal.App("physics-dance-finetune", image=image)
 vol = modal.Volume.from_name("physics-dance", create_if_missing=True)
 
 
-@app.function(gpu="L4", cpu=4.0, memory=24576, timeout=3600, volumes={"/vol": vol})
+@app.function(gpu="T4", cpu=4.0, memory=24576, timeout=3600, volumes={"/vol": vol})
 def finetune(clip: str, minutes: float, num_envs: int = 2048, run: str = "ft",
              extra: str = "") -> dict:
     import os
