@@ -70,7 +70,7 @@ def retime(JW, G, speed):
     return JWn, Gn
 
 
-def build(npz, start=None, end=None, loops=1, fps=30, speed=1.0):
+def build(npz, start=None, end=None, loops=1, fps=30, speed=1.0, lift=0.0):
     d = np.load(npz)
     JW, G, rest = d["JW"].astype(np.float64), d["G"].astype(np.float64), d["rest"]
     src_fps = float(d["fps"])
@@ -109,7 +109,7 @@ def build(npz, start=None, end=None, loops=1, fps=30, speed=1.0):
     pos = m.rigid_body_pos.numpy()
     gaps = np.stack([pos[:, MJCF_BODY_NAMES.index(n), 2] - c for n, c in CLEAR.items()], 1)
     dz = float(np.percentile(gaps.min(1), 2.0))
-    r[:, 2] -= dz
+    r[:, 2] -= dz - lift
     m = make(r)
     m.local_rigid_body_rot = matrix_to_quaternion(local, w_last=True)
     qpos = extract_qpos_from_transforms(kinematic_info=kin, root_pos=r,
@@ -134,9 +134,10 @@ if __name__ == "__main__":
     ap.add_argument("--end", type=float)
     ap.add_argument("--loops", type=int, default=1)
     ap.add_argument("--speed", type=float, default=1.0)
+    ap.add_argument("--lift", type=float, default=0.0, help="extra metres above the fitted floor")
     a = ap.parse_args()
     with torch.no_grad():
-        m, info = build(a.npz, a.start, a.end, a.loops, speed=a.speed)
+        m, info = build(a.npz, a.start, a.end, a.loops, speed=a.speed, lift=a.lift)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     torch.save(m.to_dict(), a.out)
     print("[soma_from_bake]", info)

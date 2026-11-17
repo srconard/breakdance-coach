@@ -58,7 +58,8 @@ def _sh(cmd, log, env=None, check=True):
 @app.function(cpu=8.0, memory=16384, timeout=3600, volumes={"/vol": vol})
 def track(npz: bytes, name: str, start: float = None, end: float = None, loops: int = 1,
           extra_steps: int = 30, budget_exceed: bool = False, speed: float = 1.0,
-          control_steps: int = 0, checkpoint: str = "", keep: bool = True) -> dict:
+          control_steps: int = 0, checkpoint: str = "", keep: bool = True,
+          lift: float = 0.0) -> dict:
     import glob
     import os
 
@@ -83,7 +84,7 @@ def track(npz: bytes, name: str, start: float = None, end: float = None, loops: 
             log, env={"PD_OUT": f"{w}/rec.npz", "PD_STEPS": str(control_steps)})
       else:
         se = (f" --start {start}" if start is not None else "") + (f" --end {end}" if end is not None else "")
-        _sh(f"python /opt/pd/soma_from_bake.py {w}/in.npz {w}/motions/{name}.motion{se} --loops {loops} --speed {speed}", log)
+        _sh(f"python /opt/pd/soma_from_bake.py {w}/in.npz {w}/motions/{name}.motion{se} --loops {loops} --speed {speed} --lift {lift}", log)
         _sh(f"python protomotions/components/motion_lib.py --motion-path {w}/motions/ --output-file {w}/soma.pt", log)
         _sh(f"python data/scripts/from_soma_to_anatomical_soma/retarget_motions.py --input {w}/soma.pt "
             f"--output {w}/anat.pt --pyroki-python /opt/pyroki/bin/python --cache-dir /tmp/jax"
@@ -137,7 +138,7 @@ def render_rec(rec: bytes, mjb: bytes, name: str) -> dict:
 @app.local_entrypoint()
 def main(npz: str = "", name: str = "", start: float = None, end: float = None, loops: int = 1,
          budget_exceed: bool = False, rerender: str = "", speed: float = 1.0,
-         control_steps: int = 0, checkpoint: str = ""):
+         control_steps: int = 0, checkpoint: str = "", lift: float = 0.0):
     if rerender:  # re-render a saved run dir: --rerender output/physics_dance/runs/<name>
         d = Path(rerender)
         res = render_rec.remote((d / "rec.npz").read_bytes(), (d / "rec.mjb").read_bytes(), d.name)
@@ -147,7 +148,7 @@ def main(npz: str = "", name: str = "", start: float = None, end: float = None, 
         print("RESULT", json.dumps(res.get("metrics")), res["log"][-1500:])
         return
     data = Path(npz).read_bytes() if npz else b""
-    res = track.remote(data, name, start, end, loops, 30, budget_exceed, speed, control_steps, checkpoint)
+    res = track.remote(data, name, start, end, loops, 30, budget_exceed, speed, control_steps, checkpoint, True, lift)
     od = Path("output/physics_dance/runs") / name
     od.mkdir(parents=True, exist_ok=True)
     (od / "log.txt").write_text(res.get("log", ""), encoding="utf-8")
