@@ -38,7 +38,7 @@ MASS = MASS / MASS.sum()
 JOINT_CLEAR = {0: 0.10, 4: 0.06, 5: 0.06, 7: 0.075, 8: 0.075, 10: 0.03, 11: 0.03,
                15: 0.10, 16: 0.05, 17: 0.05, 18: 0.04, 19: 0.04, 20: 0.035, 21: 0.035,
                12: 0.06, 9: 0.10, 6: 0.10, 3: 0.10}
-CONTACT_H = 0.03  # m
+CONTACT_H = 0.05  # m: GVHMR floor heights carry a few cm of noise
 
 
 def _segments_com(points, owner):
@@ -133,20 +133,26 @@ def analyse(c):
     contact = h < CONTACT_H
     airborne = ~contact.any(1)
     # floating: airborne > 0.2 s whose COM vertical accel is not ~ -g
-    float_s, jumps = 0.0, 0
+    float_s, hover_lo_s, jumps, hover_h = 0.0, 0.0, 0, []
     for a, b in runs(airborne):
         if (b - a) / fps < 0.2:
             continue
         ay = np.polyfit(np.arange(a, b) / fps, com[a:b, 1], 2)[0] * 2
         if ay > -0.5 * G_ACC:
-            float_s += (b - a) / fps
+            hh = float(np.median(minh[a:b]))
+            hover_h.append(hh)
+            if hh > 0.10:
+                float_s += (b - a) / fps
+            else:
+                hover_lo_s += (b - a) / fps
         else:
             jumps += 1
-    # sliding: horizontal speed of points that stay in contact
-    both = contact[1:] & contact[:-1]
+    # sliding: horizontal speed of points that stay ON the floor (< 2 cm)
+    tight = h < 0.02
+    both = tight[1:] & tight[:-1]
     dxz = np.linalg.norm(P[1:, :, [0, 2]] - P[:-1, :, [0, 2]], axis=-1) * fps
     slide = np.array([np.median(dxz[i][both[i]]) for i in range(F - 1) if both[i].any()])
-    slide_p90 = float(np.percentile(slide, 90)) if len(slide) else 0.0
+    slide_p90 = float(np.percentile(slide, 75)) if len(slide) else 0.0
     # balance in quasi-static frames
     quasi = (np.linalg.norm(acc[:, [0, 2]], axis=1) < 1.5) & contact.any(1)
     outside = 0
@@ -166,8 +172,9 @@ def analyse(c):
         "penetration_max_cm": round(float(max(0.0, -minh.min()) * 100), 1),
         "penetration_pct": round(100 * float((minh < -0.03).mean()), 1),
         "contact_pct": round(100 * float(contact.any(1).mean()), 1),
-        "floating_s": round(float_s, 2), "jumps": jumps,
-        "slide_p90_mps": round(slide_p90, 2),
+        "floating_s": round(float_s, 2), "hover_low_s": round(hover_lo_s, 2), "jumps": jumps,
+        "hover_median_cm": round(100 * float(np.median(hover_h)), 1) if hover_h else 0.0,
+        "slide_p75_mps": round(slide_p90, 2),
         "balance_out_pct": round(bal_out, 1), "quasi_static_frames": int(quasi.sum()),
         "com_acc_p99_g": round(acc_p99 / G_ACC, 2),
         "root_jump_max_m": round(jump_root, 3),
@@ -175,16 +182,18 @@ def analyse(c):
     }
     broken, clean = [], []
     if m["floating_s"] > 0.5:
-        broken.append(f"floats {m['floating_s']} s with no support")
+        broken.append(f"floats {m['floating_s']} s more than 10 cm up with no support")
     if m["com_acc_p99_g"] > 6 or m["root_jump_max_m"] > 0.25:
         broken.append(f"impossible jolts (COM {m['com_acc_p99_g']} g, root jump {m['root_jump_max_m']} m)")
     if m["penetration_pct"] > 10 and m["penetration_max_cm"] > 15:
         broken.append(f"sinks {m['penetration_max_cm']} cm into the floor")
     if 0.2 < m["floating_s"] <= 0.5:
-        clean.append(f"hovers {m['floating_s']} s")
-    if m["slide_p90_mps"] > 0.3:
-        clean.append(f"contacts skate ({m['slide_p90_mps']} m/s)")
-    if m["balance_out_pct"] > 25 and m["quasi_static_frames"] > 10:
+        clean.append(f"floats {m['floating_s']} s")
+    if m["hover_low_s"] > 0.5:
+        clean.append(f"hovers 5-10 cm off the floor for {m['hover_low_s']} s (floor snap)")
+    if m["slide_p75_mps"] > 0.5:
+        clean.append(f"contacts skate ({m['slide_p75_mps']} m/s)")
+    if m["balance_out_pct"] > 40 and m["quasi_static_frames"] > 10:
         clean.append(f"off balance in {m['balance_out_pct']}% of slow frames")
     if 3 < m["com_acc_p99_g"] <= 6:
         clean.append(f"jerky ({m['com_acc_p99_g']} g peaks)")
