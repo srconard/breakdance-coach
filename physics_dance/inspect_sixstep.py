@@ -56,15 +56,6 @@ def score(path):
     return out
 
 
-if __name__ == "__main__":
-    png = "--png" in sys.argv
-    files = [f for a in sys.argv[1:] if a != "--png" for f in glob.glob(a)]
-    for f in files:
-        print(score(f))
-        if png:
-            sheet(f, f[:-4] + "_sheet.png")
-
-
 BONES = [(0, 1), (1, 4), (4, 7), (7, 10), (0, 2), (2, 5), (5, 8), (8, 11),
          (0, 3), (3, 6), (6, 9), (9, 12), (12, 15), (9, 13), (13, 16),
          (16, 18), (18, 20), (9, 14), (14, 17), (17, 19), (19, 21)]
@@ -101,3 +92,13 @@ def sheet(path, out_png, n=12):
         ax.axis("off")
     fig.tight_layout()
     fig.savefig(out_png, dpi=60)
+
+
+if __name__ == "__main__":
+    png = "--png" in sys.argv
+    files = [f for a in sys.argv[1:] if a != "--png" for f in glob.glob(a)]
+    for f in files:
+        print(score(f))
+        if png:
+            sheet(f, f[:-4] + "_sheet.png")
+
