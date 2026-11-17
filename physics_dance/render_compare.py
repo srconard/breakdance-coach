@@ -48,10 +48,18 @@ def main():
          "-s", f"{2 * a.size}x{a.size}", "-r", f"{fps:.3f}", "-i", "-",
          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", "-preset", "slow",
          a.out], stdin=subprocess.PIPE)
+    # the sim respawns each episode at a terrain offset: align xy per episode
+    done = np.array(r["done"]).astype(bool)
+    starts = [0] + [i + 1 for i in np.nonzero(done)[0] if i + 1 < len(Q)]
+    off = np.zeros((len(Q), 2))
+    for k, s0 in enumerate(starts):
+        s1 = starts[k + 1] if k + 1 < len(starts) else len(Q)
+        off[s0:s1] = Q[s0, :2] - RQ[s0, :2]
     err, fell_at = [], None
-    look = None
+    look_s = look_r = None
     for i in range(len(Q)):
         ds.qpos[:] = Q[i]
+        ds.qpos[:2] -= off[i]
         dr.qpos[:] = ds.qpos
         dr.qpos[:n_rq] = RQ[i]
         mujoco.mj_forward(model, ds)
@@ -60,12 +68,14 @@ def main():
         err.append(float(e))
         if fell_at is None and np.linalg.norm(ds.xpos[root_body] - dr.xpos[root_body]) > 0.5:
             fell_at = i
-        tgt = 0.5 * (ds.xpos[root_body] + dr.xpos[root_body])
-        look = tgt if look is None else 0.85 * look + 0.15 * tgt
+        if i in starts:
+            look_s = look_r = None
+        look_s = ds.xpos[root_body].copy() if look_s is None else 0.85 * look_s + 0.15 * ds.xpos[root_body]
+        look_r = dr.xpos[root_body].copy() if look_r is None else 0.85 * look_r + 0.15 * dr.xpos[root_body]
         frames = []
-        for data, col in ((dr, (0.35, 0.55, 0.95, 1.0)), (ds, (0.95, 0.55, 0.25, 1.0))):
+        for data, col, look in ((dr, (0.35, 0.55, 0.95, 1.0), look_r), (ds, (0.95, 0.55, 0.25, 1.0), look_s)):
             model.geom_rgba[robot_geoms] = col
-            cam.lookat[:] = [look[0], look[1], 0.5]
+            cam.lookat[:] = [look[0], look[1], 0.45]
             ren.update_scene(data, camera=cam)
             frames.append(ren.render())
         model.geom_rgba[:] = rgba0
@@ -79,7 +89,12 @@ def main():
          "pct_steps_err_lt_0.15m": round(100 * float((err < 0.15).mean()), 1),
          "pct_steps_err_lt_0.5m": round(100 * float((err < 0.5).mean()), 1),
          "fell_at_s": None if fell_at is None else round(fell_at / fps, 2),
-         "resets": int(np.array(r["done"]).sum())}
+         "resets": int(done.sum()),
+         "pelvis_z_sim_mean": round(float(np.mean(Q[:, 2])), 3),
+         "pelvis_z_ref_mean": round(float(np.mean(RQ[:, 2])), 3)}
+    # per-episode error, so a failing first pass and a later pass read apart
+    m["per_episode_mean_err_m"] = [round(float(err[a:b].mean()), 3) for a, b in
+                                   zip(starts, starts[1:] + [len(err)]) if b > a]
     print("[render_compare]", json.dumps(m))
     with open(a.out[:-4] + "_metrics.json", "w") as f:
         json.dump(m, f, indent=1)

@@ -82,6 +82,7 @@ def track(npz: bytes, name: str, start: float = None, end: float = None, loops: 
         out["mp4"] = open(f"{w}/{name}.mp4", "rb").read()
         out["metrics"] = json.load(open(f"{w}/{name}_metrics.json"))
         out["rec"] = open(f"{w}/rec.npz", "rb").read()
+        out["mjb"] = open(f"{w}/rec.mjb", "rb").read()
     except Exception as ex:  # return the logs either way
         out["error"] = repr(ex)
     for f in glob.glob(f"{w}/*.json") + glob.glob(f"{w}/*audit*"):
@@ -93,9 +94,34 @@ def track(npz: bytes, name: str, start: float = None, end: float = None, loops: 
     return out
 
 
+@app.function(cpu=4.0, memory=8192, timeout=1200)
+def render_rec(rec: bytes, mjb: bytes, name: str) -> dict:
+    import os
+    import subprocess
+
+    os.makedirs("/tmp/r", exist_ok=True)
+    open("/tmp/r/rec.npz", "wb").write(rec)
+    open("/tmp/r/rec.mjb", "wb").write(mjb)
+    p = subprocess.run(f"python /opt/pd/render_compare.py /tmp/r/rec.npz /tmp/r/{name}.mp4",
+                       shell=True, capture_output=True, text=True)
+    out = {"log": p.stdout[-3000:] + p.stderr[-3000:]}
+    if p.returncode == 0:
+        out["mp4"] = open(f"/tmp/r/{name}.mp4", "rb").read()
+        out["metrics"] = json.load(open(f"/tmp/r/{name}_metrics.json"))
+    return out
+
+
 @app.local_entrypoint()
-def main(npz: str, name: str, start: float = None, end: float = None, loops: int = 1,
-         budget_exceed: bool = False):
+def main(npz: str = "", name: str = "", start: float = None, end: float = None, loops: int = 1,
+         budget_exceed: bool = False, rerender: str = ""):
+    if rerender:  # re-render a saved run dir: --rerender output/physics_dance/runs/<name>
+        d = Path(rerender)
+        res = render_rec.remote((d / "rec.npz").read_bytes(), (d / "rec.mjb").read_bytes(), d.name)
+        if "mp4" in res:
+            (d / f"{d.name}.mp4").write_bytes(res["mp4"])
+            (d / "metrics.json").write_text(json.dumps(res["metrics"], indent=1))
+        print("RESULT", json.dumps(res.get("metrics")), res["log"][-1500:])
+        return
     res = track.remote(Path(npz).read_bytes(), name, start, end, loops, 30, budget_exceed)
     od = Path("output/physics_dance/runs") / name
     od.mkdir(parents=True, exist_ok=True)
@@ -105,6 +131,7 @@ def main(npz: str, name: str, start: float = None, end: float = None, loops: int
     if "mp4" in res:
         (od / f"{name}.mp4").write_bytes(res["mp4"])
         (od / "rec.npz").write_bytes(res["rec"])
+        (od / "rec.mjb").write_bytes(res["mjb"])
         (od / "metrics.json").write_text(json.dumps(res["metrics"], indent=1))
     print("RESULT", json.dumps({k: v for k, v in res.items() if k in ("name", "metrics", "error")}))
     print(res.get("log", "")[-4000:])
