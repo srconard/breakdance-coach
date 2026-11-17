@@ -39,6 +39,7 @@ image = (
 )
 
 app = modal.App("physics-dance-soma", image=image)
+vol = modal.Volume.from_name("physics-dance", create_if_missing=True)
 
 
 def _sh(cmd, log, env=None, check=True):
@@ -54,10 +55,10 @@ def _sh(cmd, log, env=None, check=True):
     return p
 
 
-@app.function(cpu=8.0, memory=16384, timeout=3600)
+@app.function(cpu=8.0, memory=16384, timeout=3600, volumes={"/vol": vol})
 def track(npz: bytes, name: str, start: float = None, end: float = None, loops: int = 1,
           extra_steps: int = 30, budget_exceed: bool = False, speed: float = 1.0,
-          control_steps: int = 0) -> dict:
+          control_steps: int = 0, checkpoint: str = "", keep: bool = True) -> dict:
     import glob
     import os
 
@@ -67,8 +68,16 @@ def track(npz: bytes, name: str, start: float = None, end: float = None, loops: 
     os.makedirs(f"{w}/motions", exist_ok=True)
     open(f"{w}/in.npz", "wb").write(npz)
     log, out = [], {"name": name}
+    ckpt = checkpoint or CKPT
     try:
-      if control_steps:  # control: the shipped mini pack, no conversion of ours
+      if checkpoint and npz == b"":  # evaluate a fine-tuned body on the saved clip
+        import shutil
+        shutil.copy(f"/vol/{name.split('@')[0]}/anat.pt", f"{w}/anat.pt")
+        steps = int(json.load(open(f"/vol/{name.split('@')[0]}/clip.json"))["frames"]) * loops + extra_steps
+        _sh(f"python /opt/pd/track_record.py --simulator mujoco --num-envs 1 --headless "
+            f"--checkpoint {ckpt} --motion-file {w}/anat.pt",
+            log, env={"PD_OUT": f"{w}/rec.npz", "PD_STEPS": str(steps)})
+      elif control_steps:  # control: the shipped mini pack, no conversion of ours
         _sh(f"python /opt/pd/track_record.py --simulator mujoco --num-envs 1 --headless "
             f"--checkpoint {CKPT} --motion-file data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt",
             log, env={"PD_OUT": f"{w}/rec.npz", "PD_STEPS": str(control_steps)})
@@ -83,8 +92,14 @@ def track(npz: bytes, name: str, start: float = None, end: float = None, loops: 
         if end is not None or start is not None:
             frames = int(round(((end or frames / 30) - (start or 0)) * 30))
         steps = int(frames / speed) * loops + extra_steps
+        if keep:  # keep the anatomical clip for fine-tuning / re-evaluation
+            import shutil
+            os.makedirs(f"/vol/{name}", exist_ok=True)
+            shutil.copy(f"{w}/anat.pt", f"/vol/{name}/anat.pt")
+            json.dump({"frames": int(frames / speed) * loops}, open(f"/vol/{name}/clip.json", "w"))
+            vol.commit()
         _sh(f"python /opt/pd/track_record.py --simulator mujoco --num-envs 1 --headless "
-            f"--checkpoint {CKPT} --motion-file {w}/anat.pt",
+            f"--checkpoint {ckpt} --motion-file {w}/anat.pt",
             log, env={"PD_OUT": f"{w}/rec.npz", "PD_STEPS": str(steps)})
       _sh(f"python /opt/pd/render_compare.py {w}/rec.npz {w}/{name}.mp4", log)
       out["mp4"] = open(f"{w}/{name}.mp4", "rb").read()
@@ -122,7 +137,7 @@ def render_rec(rec: bytes, mjb: bytes, name: str) -> dict:
 @app.local_entrypoint()
 def main(npz: str = "", name: str = "", start: float = None, end: float = None, loops: int = 1,
          budget_exceed: bool = False, rerender: str = "", speed: float = 1.0,
-         control_steps: int = 0):
+         control_steps: int = 0, checkpoint: str = ""):
     if rerender:  # re-render a saved run dir: --rerender output/physics_dance/runs/<name>
         d = Path(rerender)
         res = render_rec.remote((d / "rec.npz").read_bytes(), (d / "rec.mjb").read_bytes(), d.name)
@@ -132,7 +147,7 @@ def main(npz: str = "", name: str = "", start: float = None, end: float = None, 
         print("RESULT", json.dumps(res.get("metrics")), res["log"][-1500:])
         return
     data = Path(npz).read_bytes() if npz else b""
-    res = track.remote(data, name, start, end, loops, 30, budget_exceed, speed, control_steps)
+    res = track.remote(data, name, start, end, loops, 30, budget_exceed, speed, control_steps, checkpoint)
     od = Path("output/physics_dance/runs") / name
     od.mkdir(parents=True, exist_ok=True)
     (od / "log.txt").write_text(res.get("log", ""), encoding="utf-8")
