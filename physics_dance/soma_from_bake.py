@@ -54,7 +54,23 @@ CLEAR = {"RightFoot": 0.075, "LeftFoot": 0.075, "RightToeBase": 0.03,
 SOMA_HIP_TO_ANKLE = 0.938  # Hips->Leg->Shin->Foot rest drop in soma23_humanoid.xml
 
 
-def build(npz, start=None, end=None, loops=1, fps=30):
+def retime(JW, G, speed):
+    """Play the clip at `speed` (0.5 = half speed) by resampling: joint
+    positions linearly, rotations by per-joint slerp."""
+    from scipy.spatial.transform import Rotation, Slerp
+
+    F = len(JW)
+    t_src = np.arange(F)
+    t_new = np.arange(0, F - 1 + 1e-9, speed)
+    JWn = np.stack([np.stack([np.interp(t_new, t_src, JW[:, j, k]) for k in range(3)], -1)
+                    for j in range(JW.shape[1])], 1)
+    Gn = np.zeros((len(t_new), G.shape[1], 3, 3))
+    for j in range(G.shape[1]):
+        Gn[:, j] = Slerp(t_src, Rotation.from_matrix(G[:, j]))(t_new).as_matrix()
+    return JWn, Gn
+
+
+def build(npz, start=None, end=None, loops=1, fps=30, speed=1.0):
     d = np.load(npz)
     JW, G, rest = d["JW"].astype(np.float64), d["G"].astype(np.float64), d["rest"]
     src_fps = float(d["fps"])
@@ -62,6 +78,8 @@ def build(npz, start=None, end=None, loops=1, fps=30):
     a = int(round((start or 0) * fps))
     b = int(round(end * fps)) if end else len(JW)
     JW, G = JW[a:b], G[a:b]
+    if speed != 1.0:
+        JW, G = retime(JW, G, speed)
     if loops > 1:  # tile, carrying the horizontal drift of each pass
         drift = JW[-1, 0] - JW[0, 0]
         drift[1] = 0
@@ -115,9 +133,10 @@ if __name__ == "__main__":
     ap.add_argument("--start", type=float)
     ap.add_argument("--end", type=float)
     ap.add_argument("--loops", type=int, default=1)
+    ap.add_argument("--speed", type=float, default=1.0)
     a = ap.parse_args()
     with torch.no_grad():
-        m, info = build(a.npz, a.start, a.end, a.loops)
+        m, info = build(a.npz, a.start, a.end, a.loops, speed=a.speed)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     torch.save(m.to_dict(), a.out)
     print("[soma_from_bake]", info)
