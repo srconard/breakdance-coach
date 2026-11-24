@@ -35,6 +35,14 @@ def report(path):
     print("  rest L arm dir", larm, " R arm dir", rarm, " L leg dir", lleg)
     print("  frame0 left", f0_left, " up", f0_up)
     print("  G[0] root angle deg", np.degrees(np.arccos(np.clip((np.trace(G[0, 0]) - 1) / 2, -1, 1))).round(1))
+    ang = np.degrees(np.arccos(np.clip((np.einsum("fjii->fj", G) - 1) / 2, -1, 1)))  # (F, 24)
+    step = np.degrees(np.arccos(np.clip((np.einsum("fjik,fjik->fj", G[1:], G[:-1]) - 1) / 2, -1, 1)))
+    jump = np.linalg.norm(JW[1:, 0] - JW[:-1, 0], axis=1)
+    print("  mean bone angle from rest, frames 0..5:", ang[:6].mean(1).round(1))
+    print("  max per-frame bone turn, frames 0..5 (deg):", step[:5].max(1).round(1),
+          " clip median", float(np.median(step.max(1))).__round__(1))
+    print("  root move per frame 0..5 (m):", jump[:5].round(3), " clip median", round(float(np.median(jump)), 3))
+    print("  root height frame0 / clip median (m):", round(float(JW[0, 0, 1]), 2), round(float(np.median(JW[:, 0, 1])), 2))
     ok = (left[0] > 0.9 and up[1] > 0.9 and abs(larm[0]) > 0.9 and lleg[1] < -0.9)
     print("  T-pose facing +Z, left +X:", "YES" if ok and face[2] > 0.9 else "NO")
 
