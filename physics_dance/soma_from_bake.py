@@ -54,6 +54,38 @@ CLEAR = {"RightFoot": 0.075, "LeftFoot": 0.075, "RightToeBase": 0.03,
 SOMA_HIP_TO_ANKLE = 0.938  # Hips->Leg->Shin->Foot rest drop in soma23_humanoid.xml
 
 
+# Rest-pose correction (2026-11-24). G is relative to the SOURCE rest; SOMA's
+# rest is a T-pose with straight limbs. A source whose rest limbs are not
+# straight (CMU: femurs splayed ~20 deg out) would put every pose 20 deg off,
+# so for each limb bone whose rest direction is > REST_FIX_DEG from the T-pose
+# direction, G is post-multiplied by the rotation canonical -> source rest.
+# (bone joint, child joint, T-pose direction in the bake's Y-up frame, left +X)
+LIMBS = [(1, 4, (0, -1, 0)), (2, 5, (0, -1, 0)), (4, 7, (0, -1, 0)), (5, 8, (0, -1, 0)),
+         (16, 18, (1, 0, 0)), (18, 20, (1, 0, 0)), (17, 19, (-1, 0, 0)), (19, 21, (-1, 0, 0))]
+REST_FIX_DEG = 10.0
+
+
+def _align(a, b):
+    """Smallest rotation matrix taking unit vector a onto unit vector b."""
+    v, c = np.cross(a, b), float(np.dot(a, b))
+    K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + K + K @ K / (1.0 + c)
+
+
+def rest_fix(G, rest):
+    fixed = {}
+    G = G.copy()
+    for j, c, canon in LIMBS:
+        src = rest[c] - rest[j]
+        src = src / np.linalg.norm(src)
+        canon = np.asarray(canon, dtype=np.float64)
+        ang = float(np.degrees(np.arccos(np.clip(np.dot(src, canon), -1, 1))))
+        if ang > REST_FIX_DEG:
+            G[:, j] = G[:, j] @ _align(canon, src)
+            fixed[j] = round(ang, 1)
+    return G, fixed
+
+
 def retime(JW, G, speed):
     """Play the clip at `speed` (0.5 = half speed) by resampling: joint
     positions linearly, rotations by per-joint slerp."""
@@ -73,6 +105,7 @@ def retime(JW, G, speed):
 def build(npz, start=None, end=None, loops=1, fps=30, speed=1.0, lift=0.0):
     d = np.load(npz)
     JW, G, rest = d["JW"].astype(np.float64), d["G"].astype(np.float64), d["rest"]
+    G, fixed = rest_fix(G, rest)
     src_fps = float(d["fps"])
     assert abs(src_fps - fps) < 1e-3, f"bake at {src_fps} fps, want {fps}"
     a = int(round((start or 0) * fps))
@@ -122,7 +155,7 @@ def build(npz, start=None, end=None, loops=1, fps=30, speed=1.0, lift=0.0):
         positions=m.rigid_body_pos, velocity=m.rigid_body_vel,
         vel_thres=0.15, height_thresh=0.1).to(torch.bool)
     info = {"frames": int(len(r)), "scale": float(s), "floor_shift": dz,
-            "min_body_z": float(m.rigid_body_pos[..., 2].min())}
+            "min_body_z": float(m.rigid_body_pos[..., 2].min()), "rest_fix_deg": fixed}
     return m, info
 
 

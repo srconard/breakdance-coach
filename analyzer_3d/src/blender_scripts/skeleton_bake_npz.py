@@ -126,6 +126,21 @@ def main():
                 G[i, j] = G[i, wrist]
                 JW[i, j] = JW[i, wrist] + G[i, wrist] @ (rest[j] - rest[wrist])
 
+    # drop a leading T-pose frame (2026-11-24): the cgspeed CMU BVHs open on a
+    # rest/T-pose frame that faces another way, so frame 0 -> 1 turns the whole
+    # body ~175 deg in one sample. No real motion turns a bone > 90 deg per frame.
+    dropped = 0
+    while len(G) > 2:
+        tr = np.einsum("jik,jik->j", G[1], G[0])  # trace(G1 G0^T) per bone
+        turn = np.degrees(np.arccos(np.clip((tr - 1) / 2, -1, 1))).max()
+        if turn <= 90.0:
+            break
+        JW, G, frames = JW[1:], G[1:], frames[1:]
+        dropped += 1
+    F = len(frames)
+    if dropped:
+        print(f"[skeleton_bake] dropped {dropped} leading T-pose frame(s)")
+
     # auto-scale to human size (source units are arbitrary: CMU ~5.6 cm/unit)
     height = rest[15][2] - rest[:, 2].min()
     scale = TARGET_HEAD_HEIGHT / max(height, 1e-6)
