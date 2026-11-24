@@ -38,9 +38,10 @@ IG_PKL = Path("output/move_library/ig_results")
 IG_TRACKABLE = ["C4yIajZugSj", "C9pmdf6I0fI", "Cjx2p8CDz2E", "CyomjspuuEJ", "DE11kilPZ95"]
 IG_USABLE = ["C1aGb2nNxkx", "C2y9zMCIqJK", "C4yIaj3u2g_", "C9pmdfJokqt", "CgrBahODcqY",
              "DCq7l1XoPVp", "DCq7l8DIctQ", "DCq7mA3ohDX", "DCq7mmKoC-x"]
-MIXAMO = ["Flair", "Breakdance 1990", "Breakdance Swipes", "Breakdance Footwork 3",
+MIXAMO = ["Flair", "Breakdance 1990", "Breakdance Footwork 3",
           "Breakdance Freezes", "Breakdance Freeze Var 1", "Breakdance Freeze Var 2",
           "Breakdance Freeze Var 3", "Breakdance Freeze Var 4", "Breakdance Ready"]
+LOOPS = {"Flair": 3}  # one Mixamo flair cycle is 1 s; the clip is made to loop
 CMU = ["85_05", "85_06", "85_07", "85_08", "85_12", "85_14"]  # 85_04 failed the screen (floats, under the floor)
 FLOOR_MOVES = {"6-step", "cc", "footwork-other", "baby-freeze", "chair-freeze", "airchair", "elbow-freeze",
                "handstand-freeze", "flare", "windmill", "headspin", "backspin", "swipe", "1990", "2000",
@@ -101,7 +102,7 @@ def main():
         npz = bake_blender(Path("downloads/mixamo") / f"{m}.fbx", bake / f"mixamo_{m.replace(' ', '_')}.npz", "mixamo", a.dry_run)
         w = window(npz) if npz.exists() else {}
         groups["mocap"].append(dict({"name": "mx_" + m.replace("Breakdance ", "").replace(" ", "_").lower(),
-                                     "npz": str(npz).replace("\\", "/"), "kind": "mocap", "ref": f"{m}_beta"}, **w))
+                                     "npz": str(npz).replace("\\", "/"), "kind": "mocap", "ref": f"{m}_beta", "loops": LOOPS.get(m, 1)}, **w))
     for c in CMU:
         npz = bake_blender(Path("downloads/cmu85") / f"{c}.bvh", bake / f"cmu{c}.npz", "cmu", a.dry_run)
         w = window(npz) if npz.exists() else {}

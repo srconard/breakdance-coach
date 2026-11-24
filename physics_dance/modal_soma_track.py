@@ -170,7 +170,7 @@ def _save(res, name):
 def batch(manifest: str, only: str = ""):
     """Run many clips in parallel (2026-11-24, physics verdicts):
         modal run physics_dance/modal_soma_track.py::batch --manifest output/physics_dance/manifest_b1.json
-    The manifest is a JSON list of {name, npz, start?, end?, speed?, lift?}. Runs whose
+    The manifest is a JSON list of {name, npz, start?, end?, loops?, speed?, lift?}. Runs whose
     output dir already has metrics.json are skipped (never pay twice)."""
     jobs = json.loads(Path(manifest).read_text(encoding="utf-8"))
     if only:
@@ -178,7 +178,7 @@ def batch(manifest: str, only: str = ""):
         jobs = [j for j in jobs if j["name"] in keep]
     todo = [j for j in jobs if not (Path("output/physics_dance/runs") / j["name"] / "metrics.json").exists()]
     print(f"BATCH {len(todo)} to run, {len(jobs) - len(todo)} already done")
-    args = [(Path(j["npz"]).read_bytes(), j["name"], j.get("start"), j.get("end"), 1, 30, False,
+    args = [(Path(j["npz"]).read_bytes(), j["name"], j.get("start"), j.get("end"), int(j.get("loops", 1)), 30, False,
              float(j.get("speed", 1.0)), 0, "", True, float(j.get("lift", 0.0))) for j in todo]
     for j, res in zip(todo, track.starmap(args, order_outputs=True, return_exceptions=True)):
         if isinstance(res, BaseException):
