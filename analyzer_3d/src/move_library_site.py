@@ -896,7 +896,7 @@ def load_physics(cfg, media, clips, refs):
         else:
             r["title"], r["source"] = "Control: NVIDIA's own test clips", "the body's own training-style motion"
         r["moves"] = moves
-        if r["kind"] != "control":
+        if r["kind"] not in ("control", "variant"):  # variants (half speed, lifted) are the same motion
             counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
         for m in moves:
             by_move.setdefault(m, []).append(r)
@@ -1052,7 +1052,7 @@ def md_to_html(text):
             lst = None
         if tbl:
             rows = [r for r in tbl if not re.match(r"^\|?\s*:?-{2,}", r)]
-            cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
+            cells = [[c.strip().replace("\x00", "|") for c in r.replace("\\|", "\x00").strip().strip("|").split("|")] for r in rows]
             h = "".join(f"<th>{md_inline(c)}</th>" for c in cells[0])
             b = "".join("<tr>" + "".join(f"<td>{md_inline(c)}</td>" for c in r) + "</tr>" for r in cells[1:])
             out.append(f'<div class="scroll"><table><tr>{h}</tr>{b}</table></div>')
@@ -1102,7 +1102,10 @@ def building_page(cfg):
     p = Path(cfg.get("project_map_md") or "")
     if not cfg.get("project_map_md") or not p.exists():
         return page("What we're building", "<h1>What we're building</h1><p class='mut'>The project map note was not found.</p>", depth=0)
-    body = ('<div class="md">' + md_to_html(p.read_text(encoding="utf-8")) + '</div>'
+    text = p.read_text(encoding="utf-8")
+    # links into this library become relative, so they work on the LAN and the tailnet alike
+    text = re.sub(r"https?://[0-9.]+:8787/webapps/move-library/([^)\s]*)", lambda m: m.group(1) or "index.html", text)
+    body = ('<div class="md">' + md_to_html(text) + '</div>'
             f'<p class="small mut">Same text as the vault note <a href="{vault_href(str(cfg.get("project_map_vault_path", "")))}">'
             f'{E(p.name)}</a> (links open in Obsidian). Rebuilt with the library.</p>')
     return page("What we're building", body, depth=0)
