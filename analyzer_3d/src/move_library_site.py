@@ -153,6 +153,8 @@ TIMELINE = [
     ("2026-09-01", "First look at the 52 results: the flare's support hand never reaches the floor; phase traces (rotations, tempo) for all 52."),
     ("2026-09-01", "Dance Mirror lesson #2: Sambo's flare in 7 parts."),
     ("2026-11-17", "This library + the full 3D audit (every extraction checked against its video)."),
+    ("2026-11-17", "First physics test: the six-step in NVIDIA's pretrained physics body (folds up by 0.5–0.9 s); toprock and popping hold."),
+    ("2026-11-24", "Physics check on every move page + the \"What we're building\" page (physics movement project, step one)."),
 ]
 
 
@@ -345,6 +347,11 @@ a.btn.go{border-color:var(--teal);color:#bff3ee}
 .badge{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:10px;color:#111;text-transform:uppercase;letter-spacing:.03em}
 .badge.clean{background:var(--clean)}.badge.usable{background:var(--usable)}.badge.broken{background:var(--broken)}
 .badge.failed{background:#777}.badge.ref{background:#7aa7ff}
+.badge.holds{background:var(--clean)}.badge.partly{background:var(--usable)}.badge.falls{background:var(--broken)}.badge.unchecked{background:#555;color:#ddd}
+.pv{font-size:11px;font-weight:700;padding:0 5px;border-radius:8px;margin-left:3px;color:#111}
+.pv.holds{background:var(--clean)}.pv.partly{background:var(--usable)}.pv.falls{background:var(--broken)}
+.spark{display:block;width:100%;height:46px;margin:6px 0 2px}
+.md h2{margin-top:22px}.md p{margin:8px 0}.md ul{margin:6px 0 6px 20px}.md blockquote{border-left:3px solid var(--teal);padding:4px 10px;margin:8px 0;color:#cfe}
 .chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:10px;background:var(--panel2);border:1px solid #3a3e47;margin:2px 3px 0 0;color:#cfd3da;text-decoration:none}
 .fam{margin-bottom:8px}
 .fam a.chip{font-size:13px;padding:4px 10px}
@@ -364,7 +371,8 @@ ul.tl{list-style:none;padding:0}ul.tl li{padding:4px 0;border-bottom:1px solid v
 
 def page(title, body, depth=0, extra_head=""):
     up = "../" * depth
-    nav = (f'<nav class="top"><a href="{up}index.html">⌂ Library</a><a href="{up}clips.html">All clips</a>'
+    nav = (f'<nav class="top"><a href="{up}index.html">⌂ Library</a><a href="{up}building.html">What we\'re building</a>'
+           f'<a href="{up}clips.html">All clips</a><a href="{up}physics.html">Physics check</a>'
            f'<a href="{up}audit.html">3D audit</a><a href="{up}reference.html">Mocap</a>'
            f'<a href="{up}clips.html#unsorted">Not yet sorted</a></nav>')
     return (f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
@@ -461,7 +469,8 @@ def build_site(cfg):
     for src, fname, label, moves in REF_SINGLE:
         rel = media.put(assets / "reference_library" / src / fname, f"media/ref/{src}/{slugify(Path(fname).stem)}.glb")
         if rel:
-            refs.append({"src": src, "label": label, "glb": rel, "moves": moves, "fps": 60 if src != "cmu85" else 60})
+            refs.append({"src": src, "label": label, "glb": rel, "moves": moves, "fps": 60 if src != "cmu85" else 60,
+                         "stem": Path(fname).stem})
     tagdoc = (jload(assets / "reference_library" / "move_tags.json", {}) or {}).get("clips", {})
     for src in ("aistpp", "finedance"):
         d = assets / "reference_library" / src
@@ -478,7 +487,10 @@ def build_site(cfg):
                 label = "FineDance · " + stem.split("_", 1)[1].replace("_", " ")
             mv = sorted({SEG_TO_MOVE[s["move"]] for s in segs if s.get("move") in SEG_TO_MOVE})
             refs.append({"src": src, "label": label, "glb": rel, "moves": ["freestyle-runs"] + mv,
-                         "fps": 60 if src == "aistpp" else 30, "segments": segs})
+                         "fps": 60 if src == "aistpp" else 30, "segments": segs, "stem": stem})
+
+    # -- physics check (2026-11-24): runs.json + side-by-side videos from physics_dance/verdicts.py
+    phys = load_physics(cfg, media, clips, refs)
 
     # -- tutorials (tutorial generator output)
     tutorials = []
@@ -527,13 +539,14 @@ def build_site(cfg):
         rec = [r for r in recon if slug in r["moves"]]
         if not (mc or mr or tut or les or rec):
             continue
-        move_pages.append((slug, name, fam, len(mc), len(mr), sum(1 for c in mc if c.get("glb")) + len(rec)))
+        move_pages.append((slug, name, fam, len(mc), len(mr), sum(1 for c in mc if c.get("glb")) + len(rec),
+                           sorted({r["verdict"] for r in phys["by_move"].get(slug, [])})))
         (out / "m" / f"{slug}.html").write_text(
-            move_page(slug, name, fam, blurb, mc, mr, tut, les, rec), encoding="utf-8")
+            move_page(slug, name, fam, blurb, mc, mr, tut, les, rec, phys["by_move"].get(slug, []), phys), encoding="utf-8")
 
     # -- browse data + pages
     lite = [{k: c.get(k) for k in ("id", "owner", "url", "dur", "tags", "desc", "worth", "moves", "video", "sheet",
-                                    "glb", "fps", "grade", "reason", "x3d", "audit_sheet", "saved", "partner")}
+                                    "glb", "fps", "grade", "reason", "x3d", "audit_sheet", "saved", "partner", "phys")}
             for c in clips]
     for c in lite:
         c["fam"] = sorted({MOVE_BY_SLUG[s][2] for s in c["moves"]})
@@ -542,7 +555,11 @@ def build_site(cfg):
     (out / "clips.html").write_text(clips_page(move_pages), encoding="utf-8")
     (out / "audit.html").write_text(audit_page(clips, recon), encoding="utf-8")
     (out / "reference.html").write_text(reference_page(refs), encoding="utf-8")
+    (out / "physics.html").write_text(physics_page(phys), encoding="utf-8")
+    (out / "building.html").write_text(building_page(cfg), encoding="utf-8")
     stats = compute_stats(clips, refs, tutorials, recon, move_pages, unsorted)
+    stats["physics"] = phys["counts"]
+    stats["physics_moves_checked"] = sum(1 for m in move_pages if m[6])
     (out / "index.html").write_text(index_page(stats, move_pages, cfg), encoding="utf-8")
     (out / "app.json").write_text(json.dumps({
         "title": "Move Library",
@@ -581,12 +598,14 @@ def compute_stats(clips, refs, tutorials, recon, move_pages, unsorted):
     }
 
 
-def move_page(slug, name, fam, blurb, mc, mr, tut, les, rec):
+def move_page(slug, name, fam, blurb, mc, mr, tut, les, rec, prs=(), phys=None):
     d = 1
     back = f"m/{slug}.html"
     parts = [f'<h1>{E(name)}</h1><div class="mut">{E(FAMILY_NAME.get(fam, fam))} · {E(blurb)}</div>']
     counts = [f"{len(mc)} clips", f"{sum(1 for c in mc if c.get('glb')) + len(rec)} of yours in 3D", f"{len(mr)} motion-capture"]
     parts.append(f'<div class="small mut" style="margin-top:4px">{" · ".join(counts)}</div>')
+    if phys is not None:
+        parts.append(physics_section(slug, fam, list(prs), phys, d))
     for t in tut:
         parts.append(f'<h2>Tutorial: {E(t["title"])}</h2><div class="small mut">{E(t.get("source", ""))}</div><div class="steps">')
         for s in t["steps"]:
@@ -642,7 +661,10 @@ def fmt_ts(sec):
 
 def index_page(st, move_pages, cfg):
     g = st["grades"]
+    pc = st.get("physics") or {}
     tiles = [
+        ("◎", "What we're building: the whole project on one page", "building.html"),
+        (sum(pc.values()), f"physics checks: {pc.get('holds', 0)} hold up · {pc.get('partly', 0)} partly · {pc.get('falls', 0)} fall apart", "physics.html"),
         (st["clips_saved"], "clips saved", "clips.html"),
         (st["clips_tagged"], "tagged by AI", "clips.html"),
         (st["clips_sorted"], "sorted into a move", "clips.html"),
@@ -662,7 +684,9 @@ def index_page(st, move_pages, cfg):
         ms = [m for m in move_pages if m[2] == fslug]
         if not ms:
             continue
-        chips = "".join(f'<a class="chip" href="m/{m[0]}.html">{E(m[1])} <span class="mut">{m[3]}{" · 3D " + str(m[5]) if m[5] else ""}{" · mocap " + str(m[4]) if m[4] else ""}</span></a>' for m in ms)
+        chips = "".join(f'<a class="chip" data-pv="{" ".join(m[6]) or "none"}" href="m/{m[0]}.html">{E(m[1])} <span class="mut">{m[3]}{" · 3D " + str(m[5]) if m[5] else ""}{" · mocap " + str(m[4]) if m[4] else ""}</span>'
+                        + "".join(f'<span class="pv {v}" title="physics: {VERDICT_SHORT[v]}">{"✓" if v == "holds" else "◐" if v == "partly" else "✕"}</span>' for v in m[6])
+                        + '</a>' for m in ms)
         fam_html.append(f'<div class="fam"><h3>{E(fname)}</h3><div>{chips}</div></div>')
     tl = "".join(f"<li><b>{E(d)}</b>{E(t)}</li>" for d, t in TIMELINE)
     weak = "".join(f"<li>{E(w)}</li>" for w in cfg.get("weak", []))
@@ -675,8 +699,11 @@ Tap a move. In any 3D viewer: drag to turn it, ¼× speed, A–B loop, mirror.</
 <div id="results"></div>
 <div class="tiles">{t_html}</div>
 <h2>Moves</h2>
-<div class="small mut">Number = clips · 3D = your 3D models · mocap = reference sequences.</div>
-{''.join(fam_html)}
+<div class="small mut">Number = clips · 3D = your 3D models · mocap = reference sequences.
+Physics check: <span class="pv holds">✓</span> holds up · <span class="pv partly">◐</span> partly · <span class="pv falls">✕</span> falls apart (<a href="physics.html">what this means</a>).</div>
+<div class="filters"><select id="pvf"><option value="">All moves</option><option value="holds">Has a motion that holds up in physics</option>
+<option value="partly">Has one that partly holds</option><option value="falls">Has one that falls apart</option><option value="none">Not checked yet</option></select></div>
+<div id="famlist">{''.join(fam_html)}</div>
 <h2>What is weak</h2><ul>{weak}</ul>
 <div class="note warn small">Private: this holds other people's Instagram videos. It lives on the NAS for you only (tailnet); never publish it.</div>
 <h2>What was built when</h2><ul class="tl">{tl}</ul>
@@ -685,6 +712,9 @@ Tap a move. In any 3D viewer: drag to turn it, ¼× speed, A–B loop, mirror.</
 const MOVES={json.dumps([[m[0], m[1], FAMILY_NAME.get(m[2], m[2])] for m in move_pages])};
 let CLIPS=null;
 const q=document.getElementById('q'),out=document.getElementById('results');
+document.getElementById('pvf').addEventListener('input',e=>{{const v=e.target.value;
+  document.querySelectorAll('#famlist a.chip').forEach(a=>{{a.style.display=(!v||a.dataset.pv.split(' ').includes(v))?'':'none';}});
+  document.querySelectorAll('#famlist .fam').forEach(f=>{{f.style.display=[...f.querySelectorAll('a.chip')].some(a=>a.style.display!=='none')?'':'none';}});}});
 q.addEventListener('input',async()=>{{
   const s=q.value.trim().toLowerCase(); if(!s){{out.innerHTML='';return;}}
   if(!CLIPS) CLIPS=await (await fetch('data/clips.json')).json();
@@ -707,6 +737,7 @@ def clips_page(move_pages):
 <select id="fam"><option value="">All families</option>{fam_opts}<option value="__unsorted">Not yet sorted</option></select>
 <select id="mv"><option value="">All moves</option>{move_opts}</select>
 <select id="qual"><option value="">Any 3D</option><option value="has3d">Has 3D</option><option value="clean">Clean</option><option value="usable">Usable</option><option value="broken">Broken</option><option value="failed">3D failed</option></select>
+<select id="phys"><option value="">Any physics</option><option value="holds">Physics: holds up</option><option value="partly">Physics: partly</option><option value="falls">Physics: falls apart</option><option value="checked">Physics: checked</option></select>
 <select id="worth"><option value="">Any rating</option><option value="yes">Library-worthy: yes</option><option value="maybe">maybe</option><option value="no">no</option></select>
 </div>
 <div id="count" class="small mut"></div>
@@ -726,6 +757,7 @@ function card(c){{
   let g='';
   if(c.grade) g=`<div class="small"><span class="badge ${{c.grade}}">${{c.grade}}</span> <span class="mut">${{esc(c.reason)}}</span></div>`;
   else if(c.x3d&&c.x3d!=='ok') g=`<div class="small"><span class="badge failed">3D failed</span></div>`;
+  if(c.phys) g+=`<div class="small"><span class="badge ${{c.phys}}">physics: ${{({{holds:'holds up',partly:'partly',falls:'falls apart'}})[c.phys]}}</span></div>`;
   const mv=c.moves.map(m=>`<a class="chip" href="m/${{m}}.html">${{esc(m)}}</a>`).join('');
   return `<div class="card">${{c.sheet?`<img class="thumb" loading="lazy" src="${{esc(c.sheet)}}" alt="">`:''}}<div class="ttl">${{esc(c.owner?'@'+c.owner:c.id)}} <span class="mut small">${{c.dur}}s</span></div><div class="small mut">${{esc(c.desc)}}</div><div>${{mv||'<span class="chip">not yet sorted</span>'}}</div>${{g}}<div class="btns">${{b}}</div></div>`;
 }}
@@ -740,13 +772,16 @@ function apply(){{
     if(ql==='failed'&&!(c.x3d&&c.x3d!=='ok'))return false;
     if(['clean','usable','broken'].includes(ql)&&c.grade!==ql)return false;
     if(w&&c.worth!==w)return false;
+    const ph=$('phys').value;
+    if(ph==='checked'&&!c.phys)return false;
+    if(ph&&ph!=='checked'&&c.phys!==ph)return false;
     return true;}});
   $('count').textContent=r.length+' clips';
   $('grid').innerHTML=r.slice(0,shown).map(card).join('');
   $('more').style.display=r.length>shown?'':'none';
 }}
 $('more').onclick=e=>{{e.preventDefault();shown+=60;apply();}};
-for(const id of ['q','fam','mv','qual','worth'])$(id).addEventListener('input',()=>{{shown=60;apply();}});
+for(const id of ['q','fam','mv','qual','worth','phys'])$(id).addEventListener('input',()=>{{shown=60;apply();}});
 fetch('data/clips.json').then(r=>r.json()).then(d=>{{CLIPS=d;
   const h=decodeURIComponent(location.hash.slice(1));
   if(h==='unsorted')$('fam').value='__unsorted';
@@ -804,6 +839,261 @@ def reference_page(refs):
                          f'<div class="btns"><a class="btn go" href="{E(viewer_href(0, r["glb"], "", r["fps"], r["label"], back="reference.html"))}">3D viewer</a></div></div>')
         parts.append("</div>")
     return page("Motion-capture reference", "".join(parts), depth=0)
+
+
+# ---------------------------------------------------------------- physics check (2026-11-24)
+
+VERDICT_ORDER = {"holds": 0, "partly": 1, "falls": 2}
+VERDICT_SHORT = {"holds": "holds up", "partly": "partly", "falls": "falls apart"}
+PHYS_DEFAULT_RULES = "No runs yet."
+
+
+def load_physics(cfg, media, clips, refs):
+    """Read physics/runs.json (physics_dance/verdicts.py) and tie each run to its moves.
+
+    Your 3D (kind "ig") -> the clip's moves. Motion capture -> the reference's moves;
+    for freestyle runs only the moves whose tagged segment overlaps the run's window
+    (plus "freestyle-runs"). The control run (NVIDIA's own clips) goes on the
+    overview page only.
+    """
+    empty = {"runs": [], "by_move": {}, "counts": {}, "rules": PHYS_DEFAULT_RULES, "doc": {}}
+    pdir = Path(cfg.get("physics") or "")
+    doc = jload(pdir / "runs.json") if cfg.get("physics") else None
+    if not doc:
+        return empty
+    clip_by_id = {c["id"]: c for c in clips}
+    ref_by_stem = {}
+    for r in refs:
+        ref_by_stem[r.get("stem")] = r
+    runs, by_move, counts = [], {}, {}
+    for r in doc.get("runs", []):
+        r = dict(r)
+        r["video_rel"] = media.put(pdir / r["video"], f"media/physics/{r['video']}") if r.get("video") else None
+        moves = []
+        if r["kind"] == "ig":
+            c = clip_by_id.get(r["ref"])
+            moves = list(c["moves"]) if c else []
+            who = ("@" + c["owner"] + " · ") if c and c.get("owner") else ""
+            r["title"] = f"Your 3D: {who}{r['ref']}"
+            r["source"] = "your 3D from video"
+            if c:
+                c["phys"] = r["verdict"]
+                r["glb"], r["clip_video"], r["fps"] = c.get("glb"), c.get("video"), c.get("fps", 30)
+        elif r["kind"] in ("mocap", "variant"):
+            ref = ref_by_stem.get(r["ref"])
+            if ref:
+                a, b = r.get("start") or 0, r.get("end") or 1e9
+                segs = [SEG_TO_MOVE.get(sg.get("move")) for sg in ref.get("segments", [])
+                        if sg.get("start_s", 0) < b and sg.get("end_s", 0) > a]
+                moves = [m for m in ref["moves"] if not ref.get("segments") or m == "freestyle-runs" or m in segs]
+                r["title"] = ref["label"] + (" (variant)" if r["kind"] == "variant" else "")
+                r["source"] = REF_SOURCES.get(ref["src"], (ref["src"],))[0] + " motion capture"
+                r["glb"], r["fps"] = ref["glb"], ref["fps"]
+            else:
+                r["title"], r["source"] = r["ref"], "motion capture"
+            if r.get("note"):
+                r["title"] = r["title"] + " · " + r["note"] if r["kind"] == "variant" else r["title"]
+        else:
+            r["title"], r["source"] = "Control: NVIDIA's own test clips", "the body's own training-style motion"
+        r["moves"] = moves
+        if r["kind"] != "control":
+            counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
+        for m in moves:
+            by_move.setdefault(m, []).append(r)
+        runs.append(r)
+    for lst in by_move.values():
+        lst.sort(key=lambda r: (r["kind"] == "variant", VERDICT_ORDER.get(r["verdict"], 3), r["mean_cm"]))
+    return {"runs": runs, "by_move": by_move, "counts": counts, "rules": doc.get("rules", ""),
+            "doc": {k: doc.get(k) for k in ("built", "body", "floor_hint")}}
+
+
+def spark_svg(series, lost=None, w=300, h=46):
+    """Tiny error-over-time line (cm, 10 Hz); dashed line at 25 cm = 'lost'."""
+    if not series:
+        return ""
+    top = max(60.0, max(series))
+    n = max(1, len(series) - 1)
+    pts = " ".join(f"{i * w / n:.1f},{h - min(v, top) * h / top:.1f}" for i, v in enumerate(series))
+    y25 = h - 25 * h / top
+    lost_x = f'<line x1="{lost * 10 * w / n:.1f}" y1="0" x2="{lost * 10 * w / n:.1f}" y2="{h}" stroke="#e5534b" stroke-width="1.5"/>' if lost is not None else ""
+    return (f'<svg class="spark" viewBox="0 0 {w} {h}" preserveAspectRatio="none" role="img" aria-label="tracking error over time">'
+            f'<line x1="0" y1="{y25:.1f}" x2="{w}" y2="{y25:.1f}" stroke="#959ba5" stroke-dasharray="4 3" stroke-width="1"/>'
+            f'{lost_x}<polyline fill="none" stroke="#ea6b2e" stroke-width="2" points="{pts}"/></svg>')
+
+
+def physics_card(r, depth, back=""):
+    up = "../" * depth
+    vid = (f'<video controls playsinline preload="none" src="{up}{E(r["video_rel"])}"></video>'
+           if r.get("video_rel") else '<div class="small mut">(no video)</div>')
+    win = ""
+    if r.get("end"):
+        win = f' · seconds {r.get("start") or 0:g}–{r["end"]:g} of the source'
+    if (r.get("loops") or 1) > 1:
+        win += f' · looped ×{r["loops"]}'
+    fell = f' · fell at {r["fell_at_s"]:g} s' if r.get("fell_at_s") is not None else " · never fell"
+    btns = []
+    if r.get("glb"):
+        btns.append(f'<a class="btn" href="{E(viewer_href(depth, r["glb"], r.get("clip_video") or "", r.get("fps", 30), r["title"], back=back))}">Source 3D</a>')
+    return (f'<div class="card"><div class="ttl">{E(r["title"])}</div>'
+            f'<div class="small"><span class="badge {E(r["verdict"])}">{E(r["label"])}</span> '
+            f'<span class="mut">{E(r.get("source", ""))}</span></div>{vid}'
+            f'{spark_svg(r.get("err_10hz_cm"), r.get("lost_at_s"))}'
+            f'<div class="small">Off by <b>{r["mean_cm"]:g} cm</b> on average, <b>{r["max_cm"]:g} cm</b> at worst{fell}.</div>'
+            f'<div class="small mut">{E(r.get("why", ""))}</div>'
+            f'<div class="small mut">Checked {E(r["date"])}{win}. Blue = the move asked for, orange = the physics body. '
+            f'Line = distance over time; dashed = 25 cm.</div>'
+            f'<div class="btns">{"".join(btns)}</div></div>')
+
+
+def physics_section(slug, fam, prs, phys, depth):
+    back = f"m/{slug}.html"
+    if not prs:
+        return ('<h2>Physics check</h2><div class="small"><span class="badge unchecked">not checked yet</span> '
+                '<span class="mut">No motion of this move has been run through the physics body yet. '
+                f'(<a href="{"../" * depth}physics.html">what the physics check is</a>)</span></div>')
+    main = [r for r in prs if r["kind"] != "variant"]
+    cnt = {}
+    for r in main:
+        cnt[r["verdict"]] = cnt.get(r["verdict"], 0) + 1
+    summ = " ".join(f'<span class="badge {v}">{VERDICT_SHORT[v]} ×{cnt[v]}</span>' for v in ("holds", "partly", "falls") if v in cnt)
+    floor = fam in ("footwork", "freezes", "power", "transitions") and any(r["verdict"] != "holds" for r in main)
+    hint = f'<div class="note small">{E(phys["doc"].get("floor_hint") or "")}</div>' if floor else ""
+    cards = "".join(physics_card(r, depth, back) for r in prs)
+    return (f'<h2>Physics check</h2><div class="small">{summ}</div>'
+            f'<div class="small mut">Each motion of this move was played into a simulated body with real gravity and contacts. '
+            f'The verdict is what <b>this</b> pretrained body did with it, not whether a person can do the move. '
+            f'<a href="{"../" * depth}physics.html">How it is judged</a>.</div>{hint}<div class="grid">{cards}</div>')
+
+
+def physics_page(phys):
+    runs = phys["runs"]
+    c = phys["counts"]
+    parts = ['<h1>Physics check</h1>',
+             '<div class="note small">Each motion is played into a simulated human body with gravity, mass and floor contact '
+             '(NVIDIA\'s released motion tracker, run in the MuJoCo physics engine on a flat floor). The body tries to copy the move. '
+             'Blue = the move asked for, orange = what the physics body did. '
+             '<b>A verdict says only what this pretrained body did.</b> It learned from everyday and sports motion, so it has never practised '
+             'hands-on-the-floor breaking. "Falls apart" means this body could not copy it yet, never that a person cannot do it.</div>',
+             f'<h2>The three labels</h2><div class="small">{E(phys["rules"])}</div>'
+             '<div class="small mut">Why these numbers (first test, 2026-11-17): on NVIDIA\'s own clips the body is off by 4.6 cm; '
+             'on a standing toprock 13 cm and it never falls; on floor moves it lost the move within 0.5–0.9 s.</div>']
+    if not runs:
+        parts.append('<p class="mut">No runs yet.</p>')
+        return page("Physics check", "".join(parts), depth=0)
+    parts.append('<div class="tiles">' + "".join(
+        f'<div class="tile"><b>{c.get(v, 0)}</b><span class="badge {v}">{VERDICT_SHORT[v]}</span></div>' for v in ("holds", "partly", "falls"))
+        + f'<div class="tile"><b>{sum(c.values())}</b><span class="mut small">motions checked</span></div></div>')
+    rows = []
+    for r in sorted(runs, key=lambda r: (r["kind"] == "control", VERDICT_ORDER.get(r["verdict"], 3), r["mean_cm"])):
+        mv = "".join(f'<a class="chip" href="m/{E(m)}.html">{E(MOVE_BY_SLUG[m][1])}</a>' for m in r["moves"] if m in MOVE_BY_SLUG)
+        vid = f'<a href="{E(r["video_rel"])}">▶ video</a>' if r.get("video_rel") else ""
+        lost = f'{r["lost_at_s"]:g} s' if r.get("lost_at_s") is not None else "—"
+        rows.append(f'<tr><td><span class="badge {E(r["verdict"])}">{E(r["label"])}</span></td>'
+                    f'<td>{E(r["title"])}<br><span class="mut small">{E(r.get("source", ""))}</span><br>{mv}</td>'
+                    f'<td class="small">{r["mean_cm"]:g} / {r["max_cm"]:g} cm</td><td class="small">{lost}</td>'
+                    f'<td class="small">{vid}<br><span class="mut">{E(r["date"])}</span></td></tr>')
+    parts.append('<h2>Every run</h2><div class="small mut">Off by = average / worst distance between the physics body and the move. '
+                 'Lost at = when it lost the move.</div><div class="scroll"><table><tr><th>verdict</th><th>motion · moves</th>'
+                 f'<th>off by</th><th>lost at</th><th>look</th></tr>{"".join(rows)}</table></div>')
+    parts.append(f'<p class="small mut">Body: {E(phys["doc"].get("body") or "")}. Runs listed {E(str(phys["doc"].get("built") or ""))}. '
+                 'Code: physics_dance/ in breakdance-coach. First test write-up (vault): '
+                 'AGENTS/desks/movement-simulation/docs/2026-11-17 six-step-physics-test.md.</p>')
+    return page("Physics check", "".join(parts), depth=0)
+
+
+# ---------------------------------------------------------------- "What we're building" (2026-11-24)
+
+VAULT_URI = "obsidian://open?vault=Shawn%27s%20Vault&file="
+
+
+def vault_href(path):
+    """Obsidian URI for a vault path (heading part dropped; the note opens at the top)."""
+    return E(VAULT_URI + quote(html.unescape(path).split("#")[0].strip(), safe=""))
+
+
+def md_inline(t):
+    t = E(t)
+    t = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", lambda m: f'<a href="{vault_href(m.group(1))}">{m.group(2)}</a>', t)
+    t = re.sub(r"\[\[([^\]]+)\]\]", lambda m: f'<a href="{vault_href(m.group(1))}">{m.group(1).split("/")[-1].split("#")[0]}</a>', t)
+    t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', t)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    t = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", t)
+    t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
+    return t
+
+
+def md_to_html(text):
+    """Small Markdown subset for the project-map note: headings, paragraphs, bullets,
+    numbered lists, tables, quotes, bold/italic/code, links and [[wikilinks]] (opened in Obsidian)."""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        text = text[end + 4:] if end > 0 else text
+    out, para, lst, tbl = [], [], None, []
+
+    def flush():
+        nonlocal para, lst, tbl
+        if para:
+            out.append("<p>" + md_inline(" ".join(para)) + "</p>")
+            para = []
+        if lst:
+            out.append(f"<{lst[0]}>" + "".join(f"<li>{md_inline(x)}</li>" for x in lst[1]) + f"</{lst[0]}>")
+            lst = None
+        if tbl:
+            rows = [r for r in tbl if not re.match(r"^\|?\s*:?-{2,}", r)]
+            cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
+            h = "".join(f"<th>{md_inline(c)}</th>" for c in cells[0])
+            b = "".join("<tr>" + "".join(f"<td>{md_inline(c)}</td>" for c in r) + "</tr>" for r in cells[1:])
+            out.append(f'<div class="scroll"><table><tr>{h}</tr>{b}</table></div>')
+            tbl = []
+
+    for line in text.splitlines():
+        s = line.rstrip()
+        if s.startswith("log::") or s.startswith("%%"):
+            continue
+        m = re.match(r"^(#{1,4})\s+(.*)", s)
+        if m:
+            flush()
+            n = min(len(m.group(1)), 3)
+            out.append(f"<h{n}>{md_inline(m.group(2))}</h{n}>")
+        elif s.startswith("|"):
+            if para or lst:
+                flush()
+            tbl.append(s)
+        elif re.match(r"^\s*[-*] ", s):
+            if tbl or para:
+                flush()
+            if not lst or lst[0] != "ul":
+                flush()
+                lst = ["ul", []]
+            lst[1].append(re.sub(r"^\s*[-*] ", "", s))
+        elif re.match(r"^\s*\d+\. ", s):
+            if tbl or para:
+                flush()
+            if not lst or lst[0] != "ol":
+                flush()
+                lst = ["ol", []]
+            lst[1].append(re.sub(r"^\s*\d+\. ", "", s))
+        elif s.startswith(">"):
+            flush()
+            out.append("<blockquote>" + md_inline(s.lstrip("> ")) + "</blockquote>")
+        elif not s.strip():
+            flush()
+        else:
+            if lst or tbl:
+                flush()
+            para.append(s.strip())
+    flush()
+    return "\n".join(out)
+
+
+def building_page(cfg):
+    p = Path(cfg.get("project_map_md") or "")
+    if not cfg.get("project_map_md") or not p.exists():
+        return page("What we're building", "<h1>What we're building</h1><p class='mut'>The project map note was not found.</p>", depth=0)
+    body = ('<div class="md">' + md_to_html(p.read_text(encoding="utf-8")) + '</div>'
+            f'<p class="small mut">Same text as the vault note <a href="{vault_href(str(cfg.get("project_map_vault_path", "")))}">'
+            f'{E(p.name)}</a> (links open in Obsidian). Rebuilt with the library.</p>')
+    return page("What we're building", body, depth=0)
 
 
 def main():

@@ -102,5 +102,8 @@
       "grade": "usable",
       "reason": "Human look 2026-11-17: the macaco's handstand and kip read right; one landing frame floats 11 cm and the legs tangle mid-turn. Vision pass said broken."
     }
-  }
+  },
+  "physics": "/volume1/docker/AI-Agent-Home/ig-extract/library-assets/physics",
+  "project_map_md": "/volume1/docker/AI-Agent-Home/vault/AGENTS/desks/movement-simulation/docs/2026-11-24 physics-movement-project-map.md",
+  "project_map_vault_path": "AGENTS/desks/movement-simulation/docs/2026-11-24 physics-movement-project-map"
 }

@@ -65,7 +65,11 @@ def track(npz: bytes, name: str, start: float = None, end: float = None, loops: 
 
     import numpy as np
 
-    w = "/tmp/w"
+    import tempfile
+
+    # a fresh scratch dir per call: Modal reuses warm containers, and a shared /tmp/w
+    # made the retargeter refuse to overwrite the last clip's output (2026-11-24)
+    w = tempfile.mkdtemp(prefix="w", dir="/tmp")
     os.makedirs(f"{w}/motions", exist_ok=True)
     open(f"{w}/in.npz", "wb").write(npz)
     log, out = [], {"name": name}
