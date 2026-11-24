@@ -51,8 +51,8 @@ FIRST_TEST = {
 
 # Runs that are NOT verdicts: the motion never reached the body correctly (2026-11-24).
 NOT_A_VERDICT = {
-    "cmu": "The CMU skeleton conversion is wrong: the blue reference itself starts in a broken pose, so the body "
-           "fails at once for a reason that has nothing to do with the move. Needs a fixed CMU bake first.",
+    # "cmu" was listed here on 2026-11-24 (broken CMU bake); fixed the same day in
+    # skeleton_bake_npz.py (leading T-pose frame) + soma_from_bake.py (splayed rest legs), re-run.
 }
 NOT_RUN_REASON = {
     "ig_Cjx2p8CDz2E": "The retargeter (it fits the 3D onto the physics body's skeleton) did not converge on this clip, "
@@ -115,7 +115,8 @@ def main():
             date, group = "2026-11-17", "first_test"
         elif d.name in plan:
             p = plan[d.name]
-            kind, ref, start, end, note = p["kind"], p["ref"], p.get("start"), p.get("end"), ""
+            kind, ref, start, end, note = p["kind"], p["ref"], p.get("start"), p.get("end"), (
+                "Re-run after the CMU conversion was fixed (2026-11-24)." if d.name.startswith("cmu") else "")
             date, group = "2026-11-24", p["group"]
         else:
             continue

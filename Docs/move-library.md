@@ -14,6 +14,10 @@ Served privately by the NAS bridge at `/webapps/move-library/` (tailnet only: it
 3. **NAS**: `python3 -m analyzer_3d.src.move_library_site --config analyzer_3d/nas_deploy/move_library_site.json`. Pure stdlib (python 3.8). Media are hard-linked from where they already live, so the site adds no disk.
 4. **QA**: `node viewer/qa_library.mjs --base http://192.168.0.157:8787/webapps/move-library/ --out qa <pages…>`. It opens each page headless at phone size and reports console errors and failed requests. On viewer pages it also checks that the model loads, the clock runs and the video advances.
 
+## Physics check (2026-11-24)
+
+Every move page has a **Physics check** section, the home page marks each move ✓ / ◐ / ✕ and filters by it, and `physics.html` lists every run (plus a "could not be checked" table). The data is `ig-extract/library-assets/physics/runs.json` + one side-by-side mp4 per run (config key `physics`), made on the PC by `physics_dance/` (`prepare_batch.py` -> Modal `modal_soma_track.py::batch` -> `verdicts.py`; full rebuild order and the CMU skeleton notes in `physics_dance/README.md`). Copy `output/physics_dance/library/*` into that folder, then run step 3 above. The **What we're building** page (`building.html`, first home tile) is rendered from the vault note named by the config keys `project_map_md` / `project_map_vault_path`.
+
 ## Viewer
 
 `viewer/library.html` + `app.bundle.js` is one shared page: `viewer.html?glb=…&video=…&fps=…&title=…[&t=s][&loop=a,b][&back=page]`.
