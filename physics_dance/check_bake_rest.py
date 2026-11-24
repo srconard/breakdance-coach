@@ -23,7 +23,7 @@ def report(path):
     rest, JW, G = d["rest"], d["JW"], d["G"]
     left = unit(rest[1] - rest[2])           # right hip -> left hip
     up = unit(rest[12] - rest[0])            # hips -> neck
-    face = unit(np.cross(up, left))          # Y-up, right-handed: left x up... facing = up x left? checked below
+    face = unit(np.cross(left, up))          # +X x +Y = +Z
     larm = unit(rest[20] - rest[16])          # left shoulder(arm) -> left wrist
     rarm = unit(rest[21] - rest[17])
     lleg = unit(rest[7] - rest[1])
