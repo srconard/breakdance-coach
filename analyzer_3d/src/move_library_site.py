@@ -903,7 +903,13 @@ def load_physics(cfg, media, clips, refs):
         runs.append(r)
     for lst in by_move.values():
         lst.sort(key=lambda r: (r["kind"] == "variant", VERDICT_ORDER.get(r["verdict"], 3), r["mean_cm"]))
-    return {"runs": runs, "by_move": by_move, "counts": counts, "rules": doc.get("rules", ""),
+    not_run = []
+    for r in doc.get("not_run", []):
+        ref = ref_by_stem.get(r["ref"])
+        c = clip_by_id.get(r["ref"])
+        title = ref["label"] if ref else (("Your 3D: " + (("@" + c["owner"] + " · ") if c and c.get("owner") else "") + r["ref"]) if r["kind"] == "ig" else r["ref"])
+        not_run.append(dict(r, title=title))
+    return {"runs": runs, "by_move": by_move, "counts": counts, "rules": doc.get("rules", ""), "not_run": not_run,
             "doc": {k: doc.get(k) for k in ("built", "body", "floor_hint")}}
 
 
@@ -995,6 +1001,12 @@ def physics_page(phys):
     parts.append('<h2>Every run</h2><div class="small mut">Off by = average / worst distance between the physics body and the move. '
                  'Lost at = when it lost the move.</div><div class="scroll"><table><tr><th>verdict</th><th>motion · moves</th>'
                  f'<th>off by</th><th>lost at</th><th>look</th></tr>{"".join(rows)}</table></div>')
+    if phys.get("not_run"):
+        nr = "".join(f'<tr><td><span class="badge unchecked">not a verdict</span></td><td>{E(r["title"])}</td>'
+                     f'<td class="small">{E(r["reason"])}</td><td class="small mut">{E(r["date"])}</td></tr>' for r in phys["not_run"])
+        parts.append('<h2>Could not be checked</h2><div class="small mut">These motions never reached the body correctly, '
+                     'so they have no verdict. Their move pages say "not checked yet" unless another motion was checked.</div>'
+                     f'<div class="scroll"><table>{nr}</table></div>')
     parts.append(f'<p class="small mut">Body: {E(phys["doc"].get("body") or "")}. Runs listed {E(str(phys["doc"].get("built") or ""))}. '
                  'Code: physics_dance/ in breakdance-coach. First test write-up (vault): '
                  'AGENTS/desks/movement-simulation/docs/2026-11-17 six-step-physics-test.md.</p>')

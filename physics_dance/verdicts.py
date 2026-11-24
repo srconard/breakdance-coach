@@ -49,6 +49,17 @@ FIRST_TEST = {
 }
 
 
+# Runs that are NOT verdicts: the motion never reached the body correctly (2026-11-24).
+NOT_A_VERDICT = {
+    "cmu": "The CMU skeleton conversion is wrong: the blue reference itself starts in a broken pose, so the body "
+           "fails at once for a reason that has nothing to do with the move. Needs a fixed CMU bake first.",
+}
+NOT_RUN_REASON = {
+    "ig_Cjx2p8CDz2E": "The retargeter (it fits the 3D onto the physics body's skeleton) did not converge on this clip, "
+                      "even with its limits relaxed, so it never reached the body.",
+}
+
+
 def verdict(m):
     lost = m.get("lost_at_s")
     if lost is None and m.get("fell_at_s") is not None:
@@ -80,9 +91,22 @@ def main():
     for mf in sorted(Path("output/physics_dance").glob("manifest_*.json")):
         for j in json.loads(mf.read_text(encoding="utf-8")):
             plan[j["name"]] = dict(j, group=mf.stem.replace("manifest_", ""))
-    runs = []
+    runs, not_run = [], []
     for d in sorted(p for p in RUNS.iterdir() if p.is_dir()):
         mj = d / "metrics.json"
+        excl = next((v for k, v in NOT_A_VERDICT.items() if d.name.startswith(k)), None)
+        if (excl or not mj.exists()) and d.name in plan:
+            p = plan[d.name]
+            log = (d / "log.txt").read_text(encoding="utf-8", errors="replace") if (d / "log.txt").exists() else ""
+            reason = excl or NOT_RUN_REASON.get(d.name) or (
+                "The retargeter did not converge." if "did not converge" in log else "The run failed before the physics step.")
+            not_run.append({"name": d.name, "kind": p["kind"], "ref": p["ref"], "reason": reason, "date": "2026-11-24"})
+            continue
+        if not mj.exists() and d.name == "sixstep_fw2":
+            not_run.append({"name": d.name, "kind": "mocap", "ref": "Breakdance Footwork 2_beta", "date": "2026-11-17",
+                            "reason": "First test (2026-11-17): the body sank to the floor by 0.8 s; that recording "
+                                      "was not kept, so there are no numbers or video for it."})
+            continue
         if not mj.exists():
             continue
         m = json.loads(mj.read_text(encoding="utf-8"))
@@ -112,13 +136,15 @@ def main():
     doc = {"_comment": __doc__.split("\n\n")[0], "built": __import__("datetime").datetime.now().isoformat(timespec="minutes"),
            "rules": HOLD_RULE, "floor_hint": FLOOR_FAMILIES_HINT,
            "body": "NVIDIA anatomical SOMA BONES-SEED FSQ tracker (ProtoMotions 13de0cc), MuJoCo, flat floor, Modal CPU",
-           "runs": runs}
+           "runs": runs, "not_run": not_run}
     (OUT / "runs.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")
     counts = {}
     for r in runs:
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
         print(f"{r['name']:<24} {r['label']:<30} mean {r['mean_cm']:>5} cm  max {r['max_cm']:>5}  {r['group']}")
-    print("COUNTS", json.dumps(counts), len(runs))
+    for r in not_run:
+        print(f"{r['name']:<24} NOT A VERDICT: {r['reason'][:80]}")
+    print("COUNTS", json.dumps(counts), len(runs), "not run:", len(not_run))
 
 
 if __name__ == "__main__":
