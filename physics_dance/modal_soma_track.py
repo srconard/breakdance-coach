@@ -178,7 +178,7 @@ def batch(manifest: str, only: str = ""):
         jobs = [j for j in jobs if j["name"] in keep]
     todo = [j for j in jobs if not (Path("output/physics_dance/runs") / j["name"] / "metrics.json").exists()]
     print(f"BATCH {len(todo)} to run, {len(jobs) - len(todo)} already done")
-    args = [(Path(j["npz"]).read_bytes(), j["name"], j.get("start"), j.get("end"), int(j.get("loops", 1)), 30, False,
+    args = [(Path(j["npz"]).read_bytes(), j["name"], j.get("start"), j.get("end"), int(j.get("loops", 1)), 30, bool(j.get("budget_exceed")),
              float(j.get("speed", 1.0)), 0, "", True, float(j.get("lift", 0.0))) for j in todo]
     for j, res in zip(todo, track.starmap(args, order_outputs=True, return_exceptions=True)):
         if isinstance(res, BaseException):
@@ -194,6 +194,9 @@ def rescore(names: str):
     """Metrics-only re-score of saved runs (adds lost_at_s + the error series):
         modal run physics_dance/modal_soma_track.py::rescore --names uprock,ig_C6lkJCSrBpn"""
     ds = [Path("output/physics_dance/runs") / n for n in names.split(",")]
+    for d in [d for d in ds if not (d / "rec.mjb").exists()]:
+        print("RESCORE-SKIP", d.name, "(no saved recording)")
+    ds = [d for d in ds if (d / "rec.mjb").exists()]
     args = [((d / "rec.npz").read_bytes(), (d / "rec.mjb").read_bytes(), d.name) for d in ds]
     for d, res in zip(ds, score_rec.starmap(args, order_outputs=True, return_exceptions=True)):
         if isinstance(res, BaseException) or "metrics" not in res:

@@ -35,6 +35,7 @@ OUT = Path("output/physics_dance")
 REF = Path("output/reference_library")
 IG_PKL = Path("output/move_library/ig_results")
 
+RETRY_BUDGET = {"ig_Cjx2p8CDz2E"}  # retarget rejected the clip on 2026-11-24: retry with --allow-motion-budget-exceedance
 IG_TRACKABLE = ["C4yIajZugSj", "C9pmdf6I0fI", "Cjx2p8CDz2E", "CyomjspuuEJ", "DE11kilPZ95"]
 IG_USABLE = ["C1aGb2nNxkx", "C2y9zMCIqJK", "C4yIaj3u2g_", "C9pmdfJokqt", "CgrBahODcqY",
              "DCq7l1XoPVp", "DCq7l8DIctQ", "DCq7mA3ohDX", "DCq7mmKoC-x"]
@@ -96,7 +97,7 @@ def main():
             npz = bake_pkl(pkl, bake / f"ig_{sc}.npz", a.dry_run)
             w = window(npz, 0.0, IG_WINDOW_S) if npz.exists() else {}
             groups[grp].append(dict({"name": f"ig_{sc}", "npz": str(npz).replace("\\", "/"),
-                                     "kind": "ig", "ref": sc}, **w))
+                                     "kind": "ig", "ref": sc, "budget_exceed": f"ig_{sc}" in RETRY_BUDGET}, **w))
 
     for m in MIXAMO:
         npz = bake_blender(Path("downloads/mixamo") / f"{m}.fbx", bake / f"mixamo_{m.replace(' ', '_')}.npz", "mixamo", a.dry_run)
