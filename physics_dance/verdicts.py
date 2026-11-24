@@ -102,10 +102,10 @@ def main():
                 "The retargeter did not converge." if "did not converge" in log else "The run failed before the physics step.")
             not_run.append({"name": d.name, "kind": p["kind"], "ref": p["ref"], "reason": reason, "date": "2026-11-24"})
             continue
-        if not mj.exists() and d.name == "sixstep_fw2":
+        if d.name == "sixstep_fw2":  # its 11-17 metrics are garbage (respawn offset); no recording kept
             not_run.append({"name": d.name, "kind": "mocap", "ref": "Breakdance Footwork 2_beta", "date": "2026-11-17",
-                            "reason": "First test (2026-11-17): the body sank to the floor by 0.8 s; that recording "
-                                      "was not kept, so there are no numbers or video for it."})
+                            "reason": "First test (2026-11-17): the body sank to the floor by 0.8 s. Its numbers are "
+                                      "unusable (a respawn offset) and the recording was not kept, so it has no verdict here."})
             continue
         if not mj.exists():
             continue
