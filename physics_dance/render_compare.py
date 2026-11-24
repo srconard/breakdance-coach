@@ -3,7 +3,11 @@
 Also writes metrics: per-step mean body-position error (all robot bodies),
 the share of steps under 0.15 m / 0.5 m, and whether/when the body fell
 (pelvis more than 0.5 m from the reference pelvis).
-    MUJOCO_GL=osmesa python render_compare.py rec.npz out.mp4 [--size 480]
+2026-11-24 (physics verdicts): also `lost_at_s` (the earlier of the fall and
+the first moment the 1-second rolling mean error passes LOST_M = 0.25 m), the
+error series at 10 Hz (`err_10hz_m`), and `--no-video` to re-score an old
+recording without rendering it again.
+    MUJOCO_GL=osmesa python render_compare.py rec.npz out.mp4 [--size 480] [--no-video]
 """
 import argparse
 import json
@@ -12,6 +16,8 @@ import subprocess
 import mujoco
 import numpy as np
 
+LOST_M = 0.25  # 1-s rolling mean body error that counts as "lost the move"
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -19,6 +25,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--size", type=int, default=480)
     ap.add_argument("--title", default="")
+    ap.add_argument("--no-video", action="store_true")
     a = ap.parse_args()
     r = np.load(a.rec)
     model = mujoco.MjModel.from_binary_path(a.rec[:-4] + ".mjb")
@@ -36,14 +43,14 @@ def main():
     model.vis.headlight.diffuse[:] = 0.6
     model.vis.global_.offwidth = max(model.vis.global_.offwidth, a.size)
     model.vis.global_.offheight = max(model.vis.global_.offheight, a.size)
-    ren = mujoco.Renderer(model, a.size, a.size)
+    ren = None if a.no_video else mujoco.Renderer(model, a.size, a.size)
     cam = mujoco.MjvCamera()
     cam.type = mujoco.mjtCamera.mjCAMERA_FREE
     cam.distance, cam.elevation, cam.azimuth = 3.2, -22.0, 135.0
     robot_geoms = np.isin(model.geom_bodyid, robot)
     rgba0 = model.geom_rgba.copy()
     fps = 1.0 / float(r["dt"])
-    ff = subprocess.Popen(
+    ff = None if a.no_video else subprocess.Popen(
         ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
          "-s", f"{2 * a.size}x{a.size}", "-r", f"{fps:.3f}", "-i", "-",
          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "26", "-preset", "slow",
@@ -72,6 +79,8 @@ def main():
             look_s = look_r = None
         look_s = ds.xpos[root_body].copy() if look_s is None else 0.85 * look_s + 0.15 * ds.xpos[root_body]
         look_r = dr.xpos[root_body].copy() if look_r is None else 0.85 * look_r + 0.15 * dr.xpos[root_body]
+        if ff is None:
+            continue
         frames = []
         for data, col, look in ((dr, (0.35, 0.55, 0.95, 1.0), look_r), (ds, (0.95, 0.55, 0.25, 1.0), look_s)):
             model.geom_rgba[robot_geoms] = col
@@ -80,8 +89,9 @@ def main():
             frames.append(ren.render())
         model.geom_rgba[:] = rgba0
         ff.stdin.write(np.hstack(frames).tobytes())
-    ff.stdin.close()
-    ff.wait()
+    if ff is not None:
+        ff.stdin.close()
+        ff.wait()
     err = np.array(err)
     m = {"steps": len(err), "seconds": round(len(err) / fps, 2),
          "mean_body_err_m": round(float(err.mean()), 3),
@@ -95,7 +105,16 @@ def main():
     # per-episode error, so a failing first pass and a later pass read apart
     m["per_episode_mean_err_m"] = [round(float(err[a:b].mean()), 3) for a, b in
                                    zip(starts, starts[1:] + [len(err)]) if b > a]
-    print("[render_compare]", json.dumps(m))
+    # "lost": the 1-s rolling mean error first passes LOST_M, or the fall, whichever is first
+    w = max(1, int(round(fps)))
+    roll = np.convolve(err, np.ones(w) / w, mode="valid") if len(err) >= w else err
+    over = np.nonzero(roll > LOST_M)[0]
+    lost = [x for x in (fell_at, (int(over[0]) + w - 1) if len(over) else None) if x is not None]
+    m["lost_at_s"] = round(min(lost) / fps, 2) if lost else None
+    m["lost_rule"] = f"1-s rolling mean error > {LOST_M} m, or pelvis > 0.5 m from the reference"
+    step = max(1, int(round(fps / 10)))
+    m["err_10hz_m"] = [round(float(x), 3) for x in err[::step]]
+    print("[render_compare]", json.dumps({k: v for k, v in m.items() if k != "err_10hz_m"}))
     with open(a.out[:-4] + "_metrics.json", "w") as f:
         json.dump(m, f, indent=1)
 

@@ -135,6 +135,74 @@ def render_rec(rec: bytes, mjb: bytes, name: str) -> dict:
     return out
 
 
+@app.function(cpu=1.0, memory=2048, timeout=600)
+def score_rec(rec: bytes, mjb: bytes, name: str) -> dict:
+    """Re-score a saved recording (metrics only, no video): 2026-11-24."""
+    import os
+    import subprocess
+
+    os.makedirs("/tmp/s", exist_ok=True)
+    open("/tmp/s/rec.npz", "wb").write(rec)
+    open("/tmp/s/rec.mjb", "wb").write(mjb)
+    p = subprocess.run(f"python /opt/pd/render_compare.py /tmp/s/rec.npz /tmp/s/{name}.mp4 --no-video",
+                       shell=True, capture_output=True, text=True)
+    out = {"name": name, "log": p.stdout[-2000:] + p.stderr[-2000:]}
+    if p.returncode == 0:
+        out["metrics"] = json.load(open(f"/tmp/s/{name}_metrics.json"))
+    return out
+
+
+def _save(res, name):
+    od = Path("output/physics_dance/runs") / name
+    od.mkdir(parents=True, exist_ok=True)
+    (od / "log.txt").write_text(res.get("log", ""), encoding="utf-8")
+    for k, v in (res.get("files") or {}).items():
+        (od / k).write_text(v, encoding="utf-8")
+    if "mp4" in res:
+        (od / f"{name}.mp4").write_bytes(res["mp4"])
+        (od / "rec.npz").write_bytes(res["rec"])
+        (od / "rec.mjb").write_bytes(res["mjb"])
+        (od / "metrics.json").write_text(json.dumps(res["metrics"], indent=1))
+    return od
+
+
+@app.local_entrypoint()
+def batch(manifest: str, only: str = ""):
+    """Run many clips in parallel (2026-11-24, physics verdicts):
+        modal run physics_dance/modal_soma_track.py::batch --manifest output/physics_dance/manifest_b1.json
+    The manifest is a JSON list of {name, npz, start?, end?, speed?, lift?}. Runs whose
+    output dir already has metrics.json are skipped (never pay twice)."""
+    jobs = json.loads(Path(manifest).read_text(encoding="utf-8"))
+    if only:
+        keep = set(only.split(","))
+        jobs = [j for j in jobs if j["name"] in keep]
+    todo = [j for j in jobs if not (Path("output/physics_dance/runs") / j["name"] / "metrics.json").exists()]
+    print(f"BATCH {len(todo)} to run, {len(jobs) - len(todo)} already done")
+    args = [(Path(j["npz"]).read_bytes(), j["name"], j.get("start"), j.get("end"), 1, 30, False,
+             float(j.get("speed", 1.0)), 0, "", True, float(j.get("lift", 0.0))) for j in todo]
+    for j, res in zip(todo, track.starmap(args, order_outputs=True, return_exceptions=True)):
+        if isinstance(res, BaseException):
+            print("RESULT", json.dumps({"name": j["name"], "error": repr(res)}))
+            continue
+        _save(res, j["name"])
+        print("RESULT", json.dumps({k: v for k, v in res.items() if k in ("name", "error")}),
+              json.dumps({k: v for k, v in (res.get("metrics") or {}).items() if k != "err_10hz_m"}))
+
+
+@app.local_entrypoint()
+def rescore(names: str):
+    """Metrics-only re-score of saved runs (adds lost_at_s + the error series):
+        modal run physics_dance/modal_soma_track.py::rescore --names uprock,ig_C6lkJCSrBpn"""
+    ds = [Path("output/physics_dance/runs") / n for n in names.split(",")]
+    args = [((d / "rec.npz").read_bytes(), (d / "rec.mjb").read_bytes(), d.name) for d in ds]
+    for d, res in zip(ds, score_rec.starmap(args, order_outputs=True, return_exceptions=True)):
+        if isinstance(res, BaseException) or "metrics" not in res:
+            print("RESCORE-FAIL", d.name, repr(res)[:800])
+            continue
+        (d / "metrics.json").write_text(json.dumps(res["metrics"], indent=1))
+        print("RESCORE", d.name, json.dumps({k: v for k, v in res["metrics"].items() if k != "err_10hz_m"}))
+
+
 @app.local_entrypoint()
 def main(npz: str = "", name: str = "", start: float = None, end: float = None, loops: int = 1,
          budget_exceed: bool = False, rerender: str = "", speed: float = 1.0,
